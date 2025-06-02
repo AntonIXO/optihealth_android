@@ -3,6 +3,7 @@ package org.devpins.pihs.di
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.BloodGlucoseRecord
@@ -33,8 +34,24 @@ object HealthConnectModule {
 
     // Check if Health Connect is available
     private fun isHealthConnectAvailable(context: Context): Boolean {
+        // Method 1: Check using intent resolution
         val intent = Intent("androidx.health.ACTION_HEALTH_CONNECT_SHOW")
-        return context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY) != null
+        val intentResult = context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+
+        // Method 2: Check if package is installed directly
+        val packageInstalled = try {
+            context.packageManager.getPackageInfo(HEALTH_CONNECT_PACKAGE, 0)
+            true
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
+        }
+
+        // Log both results for debugging
+        Log.d("HealthConnect", "Intent resolution result: $intentResult")
+        Log.d("HealthConnect", "Package installed: $packageInstalled")
+
+        // Use either method or combine them
+        return packageInstalled || intentResult != null
     }
 
     // Provide HealthConnectClient
@@ -42,12 +59,24 @@ object HealthConnectModule {
     @Singleton
     fun provideHealthConnectClient(@ApplicationContext context: Context): HealthConnectClient? {
         return try {
-            if (isHealthConnectAvailable(context)) {
-                HealthConnectClient.getOrCreate(context)
+            val isAvailable = isHealthConnectAvailable(context)
+            Log.d("HealthConnect", "Health Connect available: $isAvailable")
+
+            if (isAvailable) {
+                try {
+                    val client = HealthConnectClient.getOrCreate(context)
+                    Log.d("HealthConnect", "Health Connect client created successfully: $client")
+                    client
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "Error creating Health Connect client", e)
+                    null
+                }
             } else {
+                Log.d("HealthConnect", "Health Connect not available, returning null client")
                 null
             }
         } catch (e: Exception) {
+            Log.e("HealthConnect", "Unexpected error in provideHealthConnectClient", e)
             null
         }
     }

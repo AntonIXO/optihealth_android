@@ -66,9 +66,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        Log.d("HealthConnect", "MainActivity: onCreate")
+
         // Initialize Health Repository
         coroutineScope.launch {
+            Log.d("HealthConnect", "MainActivity: Initializing health repository")
             healthRepository.initialize()
+            Log.d("HealthConnect", "MainActivity: Health repository initialized")
         }
 
         enableEdgeToEdge()
@@ -84,8 +88,11 @@ class MainActivity : ComponentActivity() {
             val permissionLauncher = rememberLauncherForActivityResult(
                 contract = healthRepository.getPermissionRequestContract(),
                 onResult = { permissions ->
+                    Log.d("HealthConnect", "MainActivity: Permission result received: $permissions")
                     scope.launch {
+                        Log.d("HealthConnect", "MainActivity: Handling permission result")
                         healthRepository.handlePermissionResult(permissions)
+                        Log.d("HealthConnect", "MainActivity: Permission result handled")
                     }
                 }
             )
@@ -103,14 +110,23 @@ class MainActivity : ComponentActivity() {
                         permissionsGranted = permissionsGranted,
                         syncStatus = syncStatus,
                         onRequestPermissions = {
-                            permissionLauncher.launch(healthRepository.getPermissionsToRequest())
+                            Log.d("HealthConnect", "MainActivity: Request permissions button clicked")
+                            val permissions = healthRepository.getPermissionsToRequest()
+                            Log.d("HealthConnect", "MainActivity: Launching permission request for: $permissions")
+                            permissionLauncher.launch(permissions)
                         },
                         onOpenHealthConnect = {
-                            startActivity(healthRepository.getHealthConnectSettingsIntent())
+                            Log.d("HealthConnect", "MainActivity: Open Health Connect button clicked")
+                            val intent = healthRepository.getHealthConnectSettingsIntent()
+                            Log.d("HealthConnect", "MainActivity: Starting Health Connect settings activity with intent: $intent")
+                            startActivity(intent)
                         },
                         onSyncData = {
+                            Log.d("HealthConnect", "MainActivity: Sync data button clicked")
                             scope.launch {
+                                Log.d("HealthConnect", "MainActivity: Starting health data sync")
                                 healthRepository.syncHealthData()
+                                Log.d("HealthConnect", "MainActivity: Health data sync completed")
                             }
                         }
                     )

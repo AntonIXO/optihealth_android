@@ -3,6 +3,7 @@ package org.devpins.pihs.health
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
@@ -45,25 +46,57 @@ class HealthConnectManager @Inject constructor(
 
     // Initialize the manager
     suspend fun initialize() {
+        Log.d("HealthConnect", "Initializing HealthConnectManager")
+        Log.d("HealthConnect", "Initial client: $healthConnectClient")
+
         checkAvailability()
+        Log.d("HealthConnect", "After checkAvailability, availability: ${_availability.value}")
+
         if (_availability.value == HealthConnectAvailability.INSTALLED) {
+            Log.d("HealthConnect", "Health Connect is installed, checking permissions")
             checkPermissions()
+        } else {
+            Log.d("HealthConnect", "Health Connect is not installed, skipping permission check")
         }
     }
 
     // Check if Health Connect is available
     private fun checkAvailability() {
-        _availability.value = when {
-            healthConnectClient == null -> HealthConnectAvailability.NOT_INSTALLED
-            else -> HealthConnectAvailability.INSTALLED
+        val newAvailability = when {
+            healthConnectClient == null -> {
+                Log.d("HealthConnect", "HealthConnectManager: healthConnectClient is null, reporting NOT_INSTALLED")
+                HealthConnectAvailability.NOT_INSTALLED
+            }
+            else -> {
+                Log.d("HealthConnect", "HealthConnectManager: healthConnectClient is available, reporting INSTALLED")
+                HealthConnectAvailability.INSTALLED
+            }
         }
+
+        Log.d("HealthConnect", "HealthConnectManager: Setting availability to $newAvailability")
+        _availability.value = newAvailability
     }
 
     // Check if permissions are granted
     private suspend fun checkPermissions() {
         healthConnectClient?.let { client ->
-            val granted = client.permissionController.getGrantedPermissions()
-            _permissionsGranted.value = granted.containsAll(healthConnectPermissions)
+            try {
+                Log.d("HealthConnect", "Checking permissions with client: $client")
+                val granted = client.permissionController.getGrantedPermissions()
+                Log.d("HealthConnect", "Granted permissions: $granted")
+                Log.d("HealthConnect", "Required permissions: $healthConnectPermissions")
+
+                val allGranted = granted.containsAll(healthConnectPermissions)
+                Log.d("HealthConnect", "All permissions granted: $allGranted")
+
+                _permissionsGranted.value = allGranted
+            } catch (e: Exception) {
+                Log.e("HealthConnect", "Error checking permissions", e)
+                _permissionsGranted.value = false
+            }
+        } ?: run {
+            Log.d("HealthConnect", "Cannot check permissions, client is null")
+            _permissionsGranted.value = false
         }
     }
 
@@ -74,30 +107,52 @@ class HealthConnectManager @Inject constructor(
 
     // Get permissions to request
     fun getPermissionsToRequest(): Set<String> {
+        Log.d("HealthConnect", "Getting permissions to request: $healthConnectPermissions")
         return healthConnectPermissions
     }
 
     // Handle permission result
     suspend fun handlePermissionResult(grantedPermissions: Set<String>) {
-        _permissionsGranted.value = grantedPermissions.containsAll(healthConnectPermissions)
+        Log.d("HealthConnect", "Permission result received: $grantedPermissions")
+        Log.d("HealthConnect", "Required permissions: $healthConnectPermissions")
+
+        val allGranted = grantedPermissions.containsAll(healthConnectPermissions)
+        Log.d("HealthConnect", "All permissions granted: $allGranted")
+
+        _permissionsGranted.value = allGranted
     }
 
     // Get intent to open Health Connect settings
     fun getHealthConnectSettingsIntent(): Intent {
+        Log.d("HealthConnect", "HealthConnectManager: Creating Health Connect settings intent")
         val intent = Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS")
         // No need to set data URI for this intent
+        Log.d("HealthConnect", "HealthConnectManager: Health Connect settings intent created: $intent")
         return intent
     }
 
     // Read steps data
     suspend fun readStepsData(start: Instant, end: Instant): List<StepsRecord> {
+        Log.d("HealthConnect", "HealthConnectManager: Reading steps data from $start to $end")
         return healthConnectClient?.let { client ->
-            val request = ReadRecordsRequest(
-                recordType = StepsRecord::class,
-                timeRangeFilter = TimeRangeFilter.between(start, end)
-            )
-            client.readRecords(request).records
-        } ?: emptyList()
+            try {
+                val request = ReadRecordsRequest(
+                    recordType = StepsRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
+                )
+                Log.d("HealthConnect", "HealthConnectManager: Created steps request: $request")
+
+                val records = client.readRecords(request).records
+                Log.d("HealthConnect", "HealthConnectManager: Read ${records.size} steps records")
+                records
+            } catch (e: Exception) {
+                Log.e("HealthConnect", "HealthConnectManager: Error reading steps data", e)
+                emptyList()
+            }
+        } ?: run {
+            Log.d("HealthConnect", "HealthConnectManager: Cannot read steps data, client is null")
+            emptyList()
+        }
     }
 
     // Read sleep data
@@ -223,23 +278,39 @@ class HealthConnectManager @Inject constructor(
 
     // Get data for the last 30 days
     suspend fun getLastMonthData(): HealthData {
+        Log.d("HealthConnect", "HealthConnectManager: Getting data for the last 30 days")
+
+        if (healthConnectClient == null) {
+            Log.e("HealthConnect", "HealthConnectManager: Cannot get data, client is null")
+            return HealthData()
+        }
+
         val end = Instant.now()
         val start = end.minusSeconds(30 * 24 * 60 * 60L) // 30 days in seconds
+        Log.d("HealthConnect", "HealthConnectManager: Time range: $start to $end")
 
-        return HealthData(
-            steps = readStepsData(start, end),
-            sleep = readSleepData(start, end),
-            heartRate = readHeartRateData(start, end),
-            exercise = readExerciseData(start, end),
-            weight = readWeightData(start, end),
-            bloodPressure = readBloodPressureData(start, end),
-            bloodGlucose = readBloodGlucoseData(start, end),
-            bodyTemperature = readBodyTemperatureData(start, end),
-            oxygenSaturation = readOxygenSaturationData(start, end),
-            respiratoryRate = readRespiratoryRateData(start, end),
-            nutrition = readNutritionData(start, end),
-            hydration = readHydrationData(start, end)
-        )
+        try {
+            Log.d("HealthConnect", "HealthConnectManager: Reading health data")
+            val healthData = HealthData(
+                steps = readStepsData(start, end),
+                sleep = readSleepData(start, end),
+                heartRate = readHeartRateData(start, end),
+                exercise = readExerciseData(start, end),
+                weight = readWeightData(start, end),
+                bloodPressure = readBloodPressureData(start, end),
+                bloodGlucose = readBloodGlucoseData(start, end),
+                bodyTemperature = readBodyTemperatureData(start, end),
+                oxygenSaturation = readOxygenSaturationData(start, end),
+                respiratoryRate = readRespiratoryRateData(start, end),
+                nutrition = readNutritionData(start, end),
+                hydration = readHydrationData(start, end)
+            )
+            Log.d("HealthConnect", "HealthConnectManager: Successfully read health data")
+            return healthData
+        } catch (e: Exception) {
+            Log.e("HealthConnect", "HealthConnectManager: Error reading health data", e)
+            return HealthData()
+        }
     }
 }
 
