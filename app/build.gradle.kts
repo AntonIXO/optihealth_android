@@ -69,6 +69,9 @@ dependencies {
     implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion") // For content negotiation
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion") // For JSON serialization with Ktor
 
+    // Health Connect
+    implementation("androidx.health.connect:connect-client:1.1.0-rc01")
+
     // Hilt for Dependency Injection
     implementation("com.google.dagger:hilt-android:2.56.2") // Check for latest Hilt version
     ksp("com.google.dagger:hilt-android-compiler:2.56.2")
