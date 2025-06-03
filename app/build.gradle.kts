@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.1.21"
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
@@ -76,6 +76,8 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.56.2") // Check for latest Hilt version
     ksp("com.google.dagger:hilt-android-compiler:2.56.2")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0") // Check for latest version
+
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 
 
     testImplementation(libs.junit)

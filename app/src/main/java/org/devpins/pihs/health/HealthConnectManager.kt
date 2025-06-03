@@ -180,23 +180,47 @@ class HealthConnectManager @Inject constructor(
     // Read exercise data
     suspend fun readExerciseData(start: Instant, end: Instant): List<ExerciseSessionRecord> {
         return healthConnectClient?.let { client ->
-            val request = ReadRecordsRequest(
-                recordType = ExerciseSessionRecord::class,
-                timeRangeFilter = TimeRangeFilter.between(start, end)
-            )
-            client.readRecords(request).records
-        } ?: emptyList()
+            try {
+                val request = ReadRecordsRequest(
+                    recordType = ExerciseSessionRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
+                )
+                Log.d("HealthConnect", "HealthConnectManager: Created exercise request: $request")
+
+                val records = client.readRecords(request).records
+                Log.d("HealthConnect", "HealthConnectManager: Read ${records.size} exercise records")
+                records
+            } catch (e: Exception) {
+                Log.e("HealthConnect", "HealthConnectManager: Error reading exercise data", e)
+                emptyList()
+            }
+        } ?: run {
+            Log.d("HealthConnect", "HealthConnectManager: Cannot read exercise data, client is null")
+            emptyList()
+        }
     }
 
     // Read weight data
     suspend fun readWeightData(start: Instant, end: Instant): List<WeightRecord> {
         return healthConnectClient?.let { client ->
-            val request = ReadRecordsRequest(
-                recordType = WeightRecord::class,
-                timeRangeFilter = TimeRangeFilter.between(start, end)
-            )
-            client.readRecords(request).records
-        } ?: emptyList()
+            try {
+                val request = ReadRecordsRequest(
+                    recordType = WeightRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
+                )
+                Log.d("HealthConnect", "HealthConnectManager: Created weight request: $request")
+
+                val records = client.readRecords(request).records
+                Log.d("HealthConnect", "HealthConnectManager: Read ${records.size} weight records")
+                records
+            } catch (e: Exception) {
+                Log.e("HealthConnect", "HealthConnectManager: Error reading weight data", e)
+                emptyList()
+            }
+        } ?: run {
+            Log.d("HealthConnect", "HealthConnectManager: Cannot read weight data, client is null")
+            emptyList()
+        }
     }
 
     // Read blood pressure data
@@ -276,6 +300,58 @@ class HealthConnectManager @Inject constructor(
         } ?: emptyList()
     }
 
+    /**
+     * Reads in existing WeightRecord records.
+     */
+    suspend fun readWeightInputs(start: Instant, end: Instant): List<WeightRecord> {
+        Log.d("HealthConnect", "HealthConnectManager: Reading weight inputs from $start to $end")
+        return healthConnectClient?.let { client ->
+            try {
+                val request = ReadRecordsRequest(
+                    recordType = WeightRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
+                )
+                Log.d("HealthConnect", "HealthConnectManager: Created weight inputs request: $request")
+
+                val response = client.readRecords(request)
+                Log.d("HealthConnect", "HealthConnectManager: Read ${response.records.size} weight input records")
+                response.records
+            } catch (e: Exception) {
+                Log.e("HealthConnect", "HealthConnectManager: Error reading weight inputs", e)
+                emptyList()
+            }
+        } ?: run {
+            Log.d("HealthConnect", "HealthConnectManager: Cannot read weight inputs, client is null")
+            emptyList()
+        }
+    }
+
+    /**
+     * Obtains a list of ExerciseSessionRecord records in a specified time frame.
+     */
+    suspend fun readExerciseSessions(start: Instant, end: Instant): List<ExerciseSessionRecord> {
+        Log.d("HealthConnect", "HealthConnectManager: Reading exercise sessions from $start to $end")
+        return healthConnectClient?.let { client ->
+            try {
+                val request = ReadRecordsRequest(
+                    recordType = ExerciseSessionRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
+                )
+                Log.d("HealthConnect", "HealthConnectManager: Created exercise sessions request: $request")
+
+                val response = client.readRecords(request)
+                Log.d("HealthConnect", "HealthConnectManager: Read ${response.records.size} exercise session records")
+                response.records
+            } catch (e: Exception) {
+                Log.e("HealthConnect", "HealthConnectManager: Error reading exercise sessions", e)
+                emptyList()
+            }
+        } ?: run {
+            Log.d("HealthConnect", "HealthConnectManager: Cannot read exercise sessions, client is null")
+            emptyList()
+        }
+    }
+
     // Get data for the last 30 days
     suspend fun getLastMonthData(): HealthData {
         Log.d("HealthConnect", "HealthConnectManager: Getting data for the last 30 days")
@@ -295,8 +371,8 @@ class HealthConnectManager @Inject constructor(
                 steps = readStepsData(start, end),
                 sleep = readSleepData(start, end),
                 heartRate = readHeartRateData(start, end),
-                exercise = readExerciseData(start, end),
-                weight = readWeightData(start, end),
+                exercise = readExerciseSessions(start, end), // Use the new method
+                weight = readWeightInputs(start, end), // Use the new method
                 bloodPressure = readBloodPressureData(start, end),
                 bloodGlucose = readBloodGlucoseData(start, end),
                 bodyTemperature = readBodyTemperatureData(start, end),

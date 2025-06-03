@@ -75,8 +75,12 @@ class HealthDataTransformer @Inject constructor() {
     private fun transformHeartRateData(heartRateRecords: List<HeartRateRecord>): List<PIHSHeartRateData> {
         return heartRateRecords.map { record ->
             PIHSHeartRateData(
-                time = formatInstant(record.startTime),
-                beatsPerMinute = record.samples.map { it.beatsPerMinute }
+                samples = record.samples.map { sample ->
+                    PIHSHeartRateSample(
+                        time = formatInstant(sample.time),
+                        beatsPerMinute = sample.beatsPerMinute
+                    )
+                }
             )
         }
     }
@@ -232,9 +236,14 @@ data class PIHSSleepStage(
 )
 
 @Serializable
-data class PIHSHeartRateData(
+data class PIHSHeartRateSample(
     val time: String,
-    val beatsPerMinute: List<Long>
+    val beatsPerMinute: Long
+)
+
+@Serializable
+data class PIHSHeartRateData(
+    val samples: List<PIHSHeartRateSample>
 )
 
 @Serializable

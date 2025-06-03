@@ -63,6 +63,9 @@ class MainActivity : ComponentActivity() {
 
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
 
+    // Simple flag to track login status
+    private var isLoggedIn = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -73,6 +76,16 @@ class MainActivity : ComponentActivity() {
             Log.d("HealthConnect", "MainActivity: Initializing health repository")
             healthRepository.initialize()
             Log.d("HealthConnect", "MainActivity: Health repository initialized")
+        }
+
+        // Try to check login status
+        try {
+            // This is a simple check - in a real app, you'd want to properly check the session
+            isLoggedIn = supabaseClient.auth != null
+            Log.d("LOGIN", "Supabase client initialized, auth available: $isLoggedIn")
+        } catch (e: Exception) {
+            Log.e("LOGIN", "Error checking login status: ${e.message}")
+            isLoggedIn = false
         }
 
         enableEdgeToEdge()
@@ -128,7 +141,8 @@ class MainActivity : ComponentActivity() {
                                 healthRepository.syncHealthData()
                                 Log.d("HealthConnect", "MainActivity: Health data sync completed")
                             }
-                        }
+                        },
+                        isLoggedIn = isLoggedIn
                     )
                 }
             }
@@ -161,7 +175,8 @@ fun MainScreen(
     syncStatus: SyncStatus,
     onRequestPermissions: () -> Unit,
     onOpenHealthConnect: () -> Unit,
-    onSyncData: () -> Unit
+    onSyncData: () -> Unit,
+    isLoggedIn: Boolean = false
 ) {
     Column(
         modifier = modifier.fillMaxSize().padding(16.dp),
@@ -182,6 +197,25 @@ fun MainScreen(
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
         )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Supabase Login Status
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Supabase Login Status: ",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = if (isLoggedIn) "Logged In" else "Not Logged In",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (isLoggedIn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+            )
+        }
 
         Spacer(modifier = Modifier.height(8.dp))
 
