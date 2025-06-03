@@ -96,8 +96,7 @@ class MainActivity : ComponentActivity() {
 
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
 
-    // Simple flag to track login status
-    private var isLoggedIn = false
+    // Simple flag to track login stat
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -112,7 +111,7 @@ class MainActivity : ComponentActivity() {
         }
 
         // Try to check login status
-        isLoggedIn = supabaseClient.auth.sessionStatus.value is SessionStatus.Authenticated
+
 
         enableEdgeToEdge()
         setContent {
@@ -122,6 +121,11 @@ class MainActivity : ComponentActivity() {
             val healthConnectAvailability by healthRepository.healthConnectAvailability.collectAsState()
             val permissionsGranted by healthRepository.permissionsGranted.collectAsState()
             val syncStatus by healthRepository.syncStatus.collectAsState()
+            val lastSyncTime by healthRepository.lastSyncTime.collectAsState()
+
+            // Authentication state
+            val sessionStatus by supabaseClient.auth.sessionStatus.collectAsState()
+            val isLoggedIn = sessionStatus is SessionStatus.Authenticated
 
             // Permission launcher
             val permissionLauncher = rememberLauncherForActivityResult(
@@ -143,6 +147,7 @@ class MainActivity : ComponentActivity() {
                         healthConnectAvailability = healthConnectAvailability,
                         permissionsGranted = permissionsGranted,
                         syncStatus = syncStatus,
+                        lastSyncTime = lastSyncTime,
                         onRequestPermissions = {
                             Log.d("HealthConnect", "MainActivity: Request permissions button clicked")
                             val permissions = healthRepository.getPermissionsToRequest()
@@ -184,6 +189,7 @@ fun MainScreen(
     healthConnectAvailability: HealthConnectAvailability,
     permissionsGranted: Boolean,
     syncStatus: SyncStatus,
+    lastSyncTime: String?,
     onRequestPermissions: () -> Unit,
     onOpenHealthConnect: () -> Unit,
     onSyncData: () -> Unit,
@@ -229,6 +235,7 @@ fun MainScreen(
                 healthConnectAvailability = healthConnectAvailability,
                 permissionsGranted = permissionsGranted,
                 syncStatus = syncStatus,
+                lastSyncTime = lastSyncTime,
                 onRequestPermissions = onRequestPermissions,
                 onOpenHealthConnect = onOpenHealthConnect,
                 onSyncData = onSyncData
@@ -321,6 +328,7 @@ fun HealthConnectCard(
     healthConnectAvailability: HealthConnectAvailability,
     permissionsGranted: Boolean,
     syncStatus: SyncStatus,
+    lastSyncTime: String?,
     onRequestPermissions: () -> Unit,
     onOpenHealthConnect: () -> Unit,
     onSyncData: () -> Unit
@@ -551,6 +559,44 @@ fun HealthConnectCard(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
+
+                // Last Sync Time
+                if (lastSyncTime != null) {
+                    ElevatedCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = CardDefaults.elevatedCardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp)
+                        ) {
+                            Text(
+                                text = "Synced Until",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = try {
+                                    val instant = java.time.Instant.parse(lastSyncTime)
+                                    val formatter = java.time.format.DateTimeFormatter
+                                        .ofPattern("MMM dd, yyyy HH:mm")
+                                        .withZone(java.time.ZoneId.systemDefault())
+                                    formatter.format(instant)
+                                } catch (e: Exception) {
+                                    lastSyncTime // Fallback to raw timestamp if parsing fails
+                                },
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
 
                 // Sync Button
                 Button(

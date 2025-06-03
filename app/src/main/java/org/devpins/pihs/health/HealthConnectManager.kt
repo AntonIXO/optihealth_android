@@ -365,8 +365,28 @@ class HealthConnectManager @Inject constructor(
         val start = end.minusSeconds(30 * 24 * 60 * 60L) // 30 days in seconds
         Log.d("HealthConnect", "HealthConnectManager: Time range: $start to $end")
 
+        return getHealthDataInRange(start, end)
+    }
+
+    // Get data since a specific timestamp until now
+    suspend fun getHealthDataSince(since: Instant): HealthData {
+        Log.d("HealthConnect", "HealthConnectManager: Getting data since $since")
+
+        if (healthConnectClient == null) {
+            Log.e("HealthConnect", "HealthConnectManager: Cannot get data, client is null")
+            return HealthData()
+        }
+
+        val end = Instant.now()
+        Log.d("HealthConnect", "HealthConnectManager: Time range: $since to $end")
+
+        return getHealthDataInRange(since, end)
+    }
+
+    // Get health data in a specific time range
+    private suspend fun getHealthDataInRange(start: Instant, end: Instant): HealthData {
         try {
-            Log.d("HealthConnect", "HealthConnectManager: Reading health data")
+            Log.d("HealthConnect", "HealthConnectManager: Reading health data from $start to $end")
             val healthData = HealthData(
                 steps = readStepsData(start, end),
                 sleep = readSleepData(start, end),
