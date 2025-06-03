@@ -2,20 +2,14 @@ package org.devpins.pihs.health
 
 import android.util.Log
 import io.github.jan.supabase.auth.Auth
-import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.Postgrest
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.time.Instant
-import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -43,6 +37,10 @@ class HealthRepository @Inject constructor(
     private val _syncStatus = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
     val syncStatus: StateFlow<SyncStatus> = _syncStatus.asStateFlow()
 
+    // State flow to track last sync time
+    private val _lastSyncTime = MutableStateFlow<String?>(null)
+    val lastSyncTime: StateFlow<String?> = _lastSyncTime.asStateFlow()
+
     // State flow to track Health Connect availability
     val healthConnectAvailability: StateFlow<HealthConnectAvailability> = healthConnectManager.availability
 
@@ -54,6 +52,23 @@ class HealthRepository @Inject constructor(
         Log.d("HealthConnect", "HealthRepository: Initializing")
         healthConnectManager.initialize()
         Log.d("HealthConnect", "HealthRepository: Initialized, availability: ${healthConnectAvailability.value}, permissions: ${permissionsGranted.value}")
+
+        // Try to fetch the last sync time
+        fetchLastSyncTime()
+    }
+
+    // Fetch the last sync time from the database
+    private suspend fun fetchLastSyncTime() {
+        try {
+            val userId = auth.currentUserOrNull()?.id
+            if (userId != null) {
+                val metricSourceInfo = getMetricSourceInfo(userId)
+                _lastSyncTime.value = metricSourceInfo.lastSyncedAt
+                Log.d("HealthConnect", "HealthRepository: Fetched last sync time: ${_lastSyncTime.value}")
+            }
+        } catch (e: Exception) {
+            Log.e("HealthConnect", "HealthRepository: Error fetching last sync time", e)
+        }
     }
 
     // Get permission request contract
@@ -95,9 +110,37 @@ class HealthRepository @Inject constructor(
             Log.d("HealthConnect", "HealthRepository: Health Connect availability: ${healthConnectAvailability.value}")
             Log.d("HealthConnect", "HealthRepository: Permissions granted: ${permissionsGranted.value}")
 
-            // Get health data from Health Connect
+            // Get the current user ID
+            val userId = auth.currentUserOrNull()?.id
+            if (userId == null) {
+                // If we can't get the user ID, we should not proceed with the sync
+                Log.e("HealthConnect", "HealthRepository: User ID is null, cannot proceed with sync")
+                throw IllegalStateException("User not authenticated. Cannot sync health data.")
+            }
+
+            // Get information about the metric source to determine last sync time
+            val metricSourceInfo = getMetricSourceInfo(userId)
+
+            // Determine the start time for data fetching based on last sync time
+            val startTime = if (metricSourceInfo.lastSyncedAt != null) {
+                try {
+                    // Parse the last synced timestamp
+                    Instant.parse(metricSourceInfo.lastSyncedAt)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error parsing last_synced_at timestamp, using default", e)
+                    Instant.now().minusSeconds(30 * 24 * 60 * 60L) // Default to 30 days ago
+                }
+            } else {
+                // If no last sync time, default to 30 days ago
+                Log.d("HealthConnect", "HealthRepository: No last sync time found, using default")
+                Instant.now().minusSeconds(30 * 24 * 60 * 60L) // 30 days ago
+            }
+
+            Log.d("HealthConnect", "HealthRepository: Fetching data since $startTime")
+
+            // Get health data from Health Connect since the last sync
             Log.d("HealthConnect", "HealthRepository: Getting health data from Health Connect")
-            val healthData = healthConnectManager.getLastMonthData()
+            val healthData = healthConnectManager.getHealthDataSince(startTime)
             Log.d("HealthConnect", "HealthRepository: Got health data from Health Connect")
 
             // Transform health data to PIHS format
@@ -110,6 +153,9 @@ class HealthRepository @Inject constructor(
             uploadToSupabase(pihsHealthData)
             Log.d("HealthConnect", "HealthRepository: Uploaded health data to Supabase")
 
+            // Update the last synced timestamp
+            updateLastSyncedTimestamp(metricSourceInfo.id)
+
             _syncStatus.value = SyncStatus.Success
             Log.d("HealthConnect", "HealthRepository: Health data sync completed successfully")
         } catch (e: Exception) {
@@ -117,6 +163,79 @@ class HealthRepository @Inject constructor(
             _syncStatus.value = SyncStatus.Error(e.message ?: "Unknown error")
         }
     }
+
+    // Get information about the metric source
+    private suspend fun getMetricSourceInfo(userId: String): MetricSourceInfo {
+        try {
+            // Try to find an existing Health Connect metric source
+            val existingSources = postgrest["metric_sources"]
+                .select {
+                    filter {
+                        eq("user_id", userId)
+                        eq("source_identifier", "health_connect_android")
+                    }
+                }
+                .decodeList<MetricSource>()
+
+            // If a source exists, return its info
+            if (existingSources.isNotEmpty()) {
+                val source = existingSources.first()
+                Log.d("HealthConnect", "HealthRepository: Found existing metric source with ID: ${source.id}, last synced at: ${source.last_synced_at}")
+                return MetricSourceInfo(source.id, source.last_synced_at)
+            }
+
+            // Otherwise, create a new metric source
+            Log.d("HealthConnect", "HealthRepository: Creating new metric source for Health Connect")
+            val newSource = buildJsonObject {
+                put("user_id", userId)
+                put("source_identifier", "health_connect_android")
+                put("source_name", "Android Health Connect")
+                put("source_type", "mobile_sync")
+                put("is_active", true)
+                put("last_synced_at", null)
+            }
+
+            val result = postgrest["metric_sources"].insert(newSource).decodeSingle<MetricSource>()
+            Log.d("HealthConnect", "HealthRepository: Created new metric source with ID: ${result.id}")
+            return MetricSourceInfo(result.id, null)
+        } catch (e: Exception) {
+            Log.e("HealthConnect", "HealthRepository: Error getting or creating metric source", e)
+            throw e
+        }
+    }
+
+    // Update the last synced timestamp for a metric source
+    private suspend fun updateLastSyncedTimestamp(metricSourceId: Long) {
+        try {
+            val currentTime = Instant.now().toString()
+            Log.d("HealthConnect", "HealthRepository: Updating last_synced_at to $currentTime for metric source $metricSourceId")
+
+            val updateData = buildJsonObject {
+                put("last_synced_at", currentTime)
+            }
+
+            postgrest["metric_sources"]
+                .update(updateData) {
+                    filter {
+                        eq("id", metricSourceId)
+                    }
+                }
+
+            // Update the last sync time in the StateFlow
+            _lastSyncTime.value = currentTime
+
+            Log.d("HealthConnect", "HealthRepository: Updated last_synced_at timestamp")
+        } catch (e: Exception) {
+            Log.e("HealthConnect", "HealthRepository: Error updating last_synced_at timestamp", e)
+            // Don't throw the exception here, as we don't want to fail the sync if just the timestamp update fails
+        }
+    }
+
+    // Data class to hold metric source information
+    private data class MetricSourceInfo(
+        val id: Long,
+        val lastSyncedAt: String?
+    )
 
     // Upload health data to Supabase
     private suspend fun uploadToSupabase(pihsHealthData: PIHSHealthData) {
@@ -133,7 +252,8 @@ class HealthRepository @Inject constructor(
             Log.d("HealthConnect", "HealthRepository: User ID: $userId")
 
             // Get or create a metric source for Health Connect
-            val metricSourceId = getOrCreateMetricSource(userId)
+            val metricSource = getOrCreateMetricSource(userId)
+            val metricSourceId = metricSource.id
             Log.d("HealthConnect", "HealthRepository: Metric Source ID: $metricSourceId")
 
             // Upload each data type separately to appropriate tables
@@ -196,7 +316,7 @@ class HealthRepository @Inject constructor(
     }
 
     // Get or create a metric source for Health Connect
-    private suspend fun getOrCreateMetricSource(userId: String): Long {
+    private suspend fun getOrCreateMetricSource(userId: String): MetricSource {
         try {
             // Try to find an existing Health Connect metric source
             val existingSources = postgrest["metric_sources"]
@@ -208,28 +328,28 @@ class HealthRepository @Inject constructor(
                 }
                 .decodeList<MetricSource>()
 
-            // If a source exists, return its ID
+            // If a source exists, return it
             if (existingSources.isNotEmpty()) {
-                val sourceId = existingSources.first().id
-                Log.d("HealthConnect", "HealthRepository: Found existing metric source with ID: $sourceId")
-                return sourceId
+                val source = existingSources.first()
+                Log.d("HealthConnect", "HealthRepository: Found existing metric source with ID: ${source.id}, last synced at: ${source.last_synced_at}")
+                return source
             }
 
             // Otherwise, create a new metric source
             Log.d("HealthConnect", "HealthRepository: Creating new metric source for Health Connect")
+            val currentTime = Instant.now().toString()
             val newSource = buildJsonObject {
                 put("user_id", userId)
                 put("source_identifier", "health_connect_android")
                 put("source_name", "Android Health Connect")
                 put("source_type", "mobile_sync")
                 put("is_active", true)
-                put("last_synced_at", Instant.now().toString())
+                put("last_synced_at", currentTime)
             }
 
             val result = postgrest["metric_sources"].insert(newSource).decodeSingle<MetricSource>()
-            val newSourceId = result.id
-            Log.d("HealthConnect", "HealthRepository: Created new metric source with ID: $newSourceId")
-            return newSourceId
+            Log.d("HealthConnect", "HealthRepository: Created new metric source with ID: ${result.id}, last synced at: ${result.last_synced_at}")
+            return result
         } catch (e: Exception) {
             Log.e("HealthConnect", "HealthRepository: Error getting or creating metric source", e)
             throw e
@@ -238,6 +358,110 @@ class HealthRepository @Inject constructor(
 
     // Upload other health metrics to data_points table
     private suspend fun uploadMetricsToDataPoints(pihsHealthData: PIHSHealthData, userId: String, metricSourceId: Long) {
+        // Upload sleep metrics
+        pihsHealthData.sleep.forEach { sleepRecord ->
+            // Total sleep duration
+            val totalSleepDurationPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", sleepRecord.endTime)
+                put("metric_name", "total_sleep_duration_minutes")
+                put("value_numeric", sleepRecord.totalSleepDurationMinutes)
+                put("unit", "minutes")
+            }
+            postgrest["data_points"].insert(totalSleepDurationPoint)
+
+            // Deep sleep duration
+            val deepSleepDurationPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", sleepRecord.endTime)
+                put("metric_name", "deep_sleep_duration_minutes")
+                put("value_numeric", sleepRecord.deepSleepDurationMinutes)
+                put("unit", "minutes")
+            }
+            postgrest["data_points"].insert(deepSleepDurationPoint)
+
+            // Light sleep duration
+            val lightSleepDurationPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", sleepRecord.endTime)
+                put("metric_name", "light_sleep_duration_minutes")
+                put("value_numeric", sleepRecord.lightSleepDurationMinutes)
+                put("unit", "minutes")
+            }
+            postgrest["data_points"].insert(lightSleepDurationPoint)
+
+            // REM sleep duration
+            val remSleepDurationPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", sleepRecord.endTime)
+                put("metric_name", "rem_sleep_duration_minutes")
+                put("value_numeric", sleepRecord.remSleepDurationMinutes)
+                put("unit", "minutes")
+            }
+            postgrest["data_points"].insert(remSleepDurationPoint)
+
+            // Sleep score (if available)
+            if (sleepRecord.sleepScore > 0) {
+                val sleepScorePoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", sleepRecord.endTime)
+                    put("metric_name", "sleep_score")
+                    put("value_numeric", sleepRecord.sleepScore)
+                    put("unit", "score")
+                }
+                postgrest["data_points"].insert(sleepScorePoint)
+            }
+
+            // Sleep efficiency
+            val sleepEfficiencyPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", sleepRecord.endTime)
+                put("metric_name", "sleep_efficiency_percentage")
+                put("value_numeric", sleepRecord.sleepEfficiencyPercentage)
+                put("unit", "percent")
+            }
+            postgrest["data_points"].insert(sleepEfficiencyPoint)
+
+            // Sleep latency
+            val sleepLatencyPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", sleepRecord.endTime)
+                put("metric_name", "sleep_latency_minutes")
+                put("value_numeric", sleepRecord.sleepLatencyMinutes)
+                put("unit", "minutes")
+            }
+            postgrest["data_points"].insert(sleepLatencyPoint)
+
+            // Awakenings count
+            val awakeningsCountPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", sleepRecord.endTime)
+                put("metric_name", "awakenings_count")
+                put("value_numeric", sleepRecord.awakeningsCount.toDouble())
+                put("unit", "count")
+            }
+            postgrest["data_points"].insert(awakeningsCountPoint)
+
+            // Time in bed
+            val timeInBedPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", sleepRecord.endTime)
+                put("metric_name", "time_in_bed_minutes")
+                put("value_numeric", sleepRecord.timeInBedMinutes)
+                put("unit", "minutes")
+            }
+            postgrest["data_points"].insert(timeInBedPoint)
+        }
+
         // Upload heart rate data
         pihsHealthData.heartRate.forEach { hrRecord ->
             hrRecord.samples.forEach { sample ->
@@ -348,6 +572,132 @@ class HealthRepository @Inject constructor(
                 put("unit", "count")
             }
             postgrest["data_points"].insert(dataPoint)
+        }
+
+        // Upload exercise metrics to data_points table
+        pihsHealthData.exercise.forEach { exerciseRecord ->
+            // Upload workout duration
+            val workoutDurationPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", exerciseRecord.endTime)
+                put("metric_name", "workout_duration_minutes")
+                put("value_numeric", exerciseRecord.durationMinutes)
+                put("unit", "minutes")
+            }
+            postgrest["data_points"].insert(workoutDurationPoint)
+
+            // Upload workout calories burned
+            if (exerciseRecord.calories > 0) {
+                val workoutCaloriesPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", exerciseRecord.endTime)
+                    put("metric_name", "workout_calories_burned_kcal")
+                    put("value_numeric", exerciseRecord.calories)
+                    put("unit", "kcal")
+                }
+                postgrest["data_points"].insert(workoutCaloriesPoint)
+            }
+
+            // Upload workout distance
+            if (exerciseRecord.distanceKm > 0) {
+                val workoutDistancePoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", exerciseRecord.endTime)
+                    put("metric_name", "workout_distance_km")
+                    put("value_numeric", exerciseRecord.distanceKm)
+                    put("unit", "km")
+                }
+                postgrest["data_points"].insert(workoutDistancePoint)
+            }
+
+            // Upload workout average heart rate
+            if (exerciseRecord.averageHeartRateBpm > 0) {
+                val workoutAvgHrPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", exerciseRecord.endTime)
+                    put("metric_name", "workout_average_heart_rate_bpm")
+                    put("value_numeric", exerciseRecord.averageHeartRateBpm)
+                    put("unit", "bpm")
+                }
+                postgrest["data_points"].insert(workoutAvgHrPoint)
+            }
+
+            // Upload workout max heart rate
+            if (exerciseRecord.maxHeartRateBpm > 0) {
+                val workoutMaxHrPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", exerciseRecord.endTime)
+                    put("metric_name", "workout_max_heart_rate_bpm")
+                    put("value_numeric", exerciseRecord.maxHeartRateBpm)
+                    put("unit", "bpm")
+                }
+                postgrest["data_points"].insert(workoutMaxHrPoint)
+            }
+
+            // Upload workout type as text
+            val workoutTypePoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", exerciseRecord.endTime)
+                put("metric_name", "workout_type")
+                put("value_text", exerciseRecord.exerciseType)
+            }
+            postgrest["data_points"].insert(workoutTypePoint)
+
+            // Upload workout intensity if available
+            if (exerciseRecord.intensityManual > 0) {
+                val workoutIntensityPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", exerciseRecord.endTime)
+                    put("metric_name", "workout_intensity_manual")
+                    put("value_numeric", exerciseRecord.intensityManual.toDouble())
+                    put("unit", "scale")
+                }
+                postgrest["data_points"].insert(workoutIntensityPoint)
+            }
+
+            // Upload steps count from workout if available
+            if (exerciseRecord.stepsCount > 0) {
+                val workoutStepsPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", exerciseRecord.endTime)
+                    put("metric_name", "steps_count")
+                    put("value_numeric", exerciseRecord.stepsCount.toDouble())
+                    put("unit", "count")
+                }
+                postgrest["data_points"].insert(workoutStepsPoint)
+            }
+
+            // Upload active energy from workout if available
+            if (exerciseRecord.activeEnergyKcal > 0) {
+                val activeEnergyPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", exerciseRecord.endTime)
+                    put("metric_name", "active_energy_kcal")
+                    put("value_numeric", exerciseRecord.activeEnergyKcal)
+                    put("unit", "kcal")
+                }
+                postgrest["data_points"].insert(activeEnergyPoint)
+            }
+
+            // Upload exercise minutes total
+            val exerciseMinutesPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", exerciseRecord.endTime)
+                put("metric_name", "exercise_minutes_total")
+                put("value_numeric", exerciseRecord.durationMinutes)
+                put("unit", "minutes")
+            }
+            postgrest["data_points"].insert(exerciseMinutesPoint)
         }
 
         // Upload nutrition data to events table

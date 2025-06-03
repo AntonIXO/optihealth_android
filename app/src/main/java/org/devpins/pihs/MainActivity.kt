@@ -1,6 +1,5 @@
 package org.devpins.pihs
 
-import android.R.attr.text
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -13,7 +12,6 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,7 +35,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -47,13 +44,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -61,7 +54,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
-import androidx.fragment.app.FragmentManager.TAG
 import com.android.identity.util.UUID
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -75,7 +67,6 @@ import io.github.jan.supabase.auth.providers.builtin.IDToken
 import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import org.devpins.pihs.health.HealthConnectAvailability
 import org.devpins.pihs.health.HealthRepository
@@ -96,8 +87,7 @@ class MainActivity : ComponentActivity() {
 
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
 
-    // Simple flag to track login status
-    private var isLoggedIn = false
+    // Simple flag to track login stat
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -112,7 +102,7 @@ class MainActivity : ComponentActivity() {
         }
 
         // Try to check login status
-        isLoggedIn = supabaseClient.auth.sessionStatus.value is SessionStatus.Authenticated
+
 
         enableEdgeToEdge()
         setContent {
@@ -122,6 +112,11 @@ class MainActivity : ComponentActivity() {
             val healthConnectAvailability by healthRepository.healthConnectAvailability.collectAsState()
             val permissionsGranted by healthRepository.permissionsGranted.collectAsState()
             val syncStatus by healthRepository.syncStatus.collectAsState()
+            val lastSyncTime by healthRepository.lastSyncTime.collectAsState()
+
+            // Authentication state
+            val sessionStatus by supabaseClient.auth.sessionStatus.collectAsState()
+            val isLoggedIn = sessionStatus is SessionStatus.Authenticated
 
             // Permission launcher
             val permissionLauncher = rememberLauncherForActivityResult(
@@ -143,6 +138,7 @@ class MainActivity : ComponentActivity() {
                         healthConnectAvailability = healthConnectAvailability,
                         permissionsGranted = permissionsGranted,
                         syncStatus = syncStatus,
+                        lastSyncTime = lastSyncTime,
                         onRequestPermissions = {
                             Log.d("HealthConnect", "MainActivity: Request permissions button clicked")
                             val permissions = healthRepository.getPermissionsToRequest()
@@ -184,6 +180,7 @@ fun MainScreen(
     healthConnectAvailability: HealthConnectAvailability,
     permissionsGranted: Boolean,
     syncStatus: SyncStatus,
+    lastSyncTime: String?,
     onRequestPermissions: () -> Unit,
     onOpenHealthConnect: () -> Unit,
     onSyncData: () -> Unit,
@@ -229,6 +226,7 @@ fun MainScreen(
                 healthConnectAvailability = healthConnectAvailability,
                 permissionsGranted = permissionsGranted,
                 syncStatus = syncStatus,
+                lastSyncTime = lastSyncTime,
                 onRequestPermissions = onRequestPermissions,
                 onOpenHealthConnect = onOpenHealthConnect,
                 onSyncData = onSyncData
@@ -321,6 +319,7 @@ fun HealthConnectCard(
     healthConnectAvailability: HealthConnectAvailability,
     permissionsGranted: Boolean,
     syncStatus: SyncStatus,
+    lastSyncTime: String?,
     onRequestPermissions: () -> Unit,
     onOpenHealthConnect: () -> Unit,
     onSyncData: () -> Unit
@@ -552,6 +551,44 @@ fun HealthConnectCard(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // Last Sync Time
+                if (lastSyncTime != null) {
+                    ElevatedCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = CardDefaults.elevatedCardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp)
+                        ) {
+                            Text(
+                                text = "Synced Until",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = try {
+                                    val instant = java.time.Instant.parse(lastSyncTime)
+                                    val formatter = java.time.format.DateTimeFormatter
+                                        .ofPattern("MMM dd, yyyy HH:mm")
+                                        .withZone(java.time.ZoneId.systemDefault())
+                                    formatter.format(instant)
+                                } catch (e: Exception) {
+                                    lastSyncTime // Fallback to raw timestamp if parsing fails
+                                },
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
                 // Sync Button
                 Button(
                     onClick = onSyncData,
@@ -582,84 +619,6 @@ fun HealthConnectCard(
                 }
             }
         }
-    }
-}
-
-@Composable
-fun GoogleSignInButton(supabaseClient: SupabaseClient) { // Original implementation
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-
-    val onClick: () -> Unit = {
-        val credentialManager = CredentialManager.create(context)
-
-        val rawNonce = UUID.randomUUID().toString()
-        val bytes = rawNonce.toByteArray()
-        val md = MessageDigest.getInstance("SHA-256")
-        val digest = md.digest(bytes)
-        val hashedNonce = digest.fold("") { str, it -> str + "%02x".format(it)}
-
-        val googleIdOption: GetGoogleIdOption = GetGoogleIdOption.Builder()
-            .setFilterByAuthorizedAccounts(true)
-            .setFilterByAuthorizedAccounts(false)
-            .setServerClientId("421259338685-acb3ddfpdkgc055ejpil1bj5oltes1tu.apps.googleusercontent.com")
-            .setNonce(hashedNonce)
-            .build()
-
-        val request: GetCredentialRequest = GetCredentialRequest.Builder()
-            .addCredentialOption(googleIdOption)
-            .build()
-
-        coroutineScope.launch {
-            try {
-                val result = credentialManager.getCredential(
-                    request = request,
-                    context = context,
-                )
-                val credential = result.credential
-
-                val googleIdTokenCredential = GoogleIdTokenCredential
-                    .createFrom(credential.data)
-
-                val googleIdToken = googleIdTokenCredential.idToken
-
-                supabaseClient.auth.signInWith(IDToken) {
-                    idToken = googleIdToken
-                    provider = Google
-                    nonce = rawNonce
-                }
-
-                Log.i("test", googleIdToken)
-                Toast.makeText(context, "You are signed in!", Toast.LENGTH_SHORT).show()
-            } catch (e: androidx.credentials.exceptions.GetCredentialException) {
-                Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show()
-            } catch (e: GoogleIdTokenParsingException) {
-                Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    Button(
-        onClick = onClick,
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Text(text = "Sign in with Google")
-    }
-}
-
-@Composable
-fun GoogleSignOutButton(supabaseClient: SupabaseClient) {
-    val coroutineScope = rememberCoroutineScope()
-    val onClick: () -> Unit = {
-        coroutineScope.launch {
-            supabaseClient.auth.signOut(SignOutScope.LOCAL)
-        }
-    }
-    Button(
-        onClick = onClick,
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Text(text = "Sign out")
     }
 }
 
