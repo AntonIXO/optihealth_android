@@ -13,7 +13,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -577,7 +576,7 @@ fun HealthConnectCard(
                 if (syncStatus is SyncStatus.Error) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Error: ${(syncStatus as SyncStatus.Error).message}",
+                        text = "Error: ${syncStatus.message}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -622,12 +621,13 @@ fun HealthConnectCard(
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = try {
-                                    val instant = java.time.Instant.parse(lastSyncTime)
-                                    val formatter = java.time.format.DateTimeFormatter
+                                    val instant = Instant.parse(lastSyncTime)
+                                    val formatter = DateTimeFormatter
                                         .ofPattern("MMM dd, yyyy HH:mm")
                                         .withZone(java.time.ZoneId.systemDefault())
                                     formatter.format(instant)
                                 } catch (e: Exception) {
+                                    Log.d("error", e)
                                     lastSyncTime // Fallback to raw timestamp if parsing fails
                                 },
                                 style = MaterialTheme.typography.bodyLarge,
