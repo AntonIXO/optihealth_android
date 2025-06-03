@@ -455,6 +455,20 @@ class HealthConnectManager @Inject constructor(
         return getHealthDataInRange(since, end)
     }
 
+    // Get data between specific start and end timestamps
+    suspend fun getHealthDataBetween(start: Instant, end: Instant): HealthData {
+        Log.d("HealthConnect", "HealthConnectManager: Getting data between $start and $end")
+
+        if (healthConnectClient == null) {
+            Log.e("HealthConnect", "HealthConnectManager: Cannot get data, client is null")
+            return HealthData()
+        }
+
+        Log.d("HealthConnect", "HealthConnectManager: Time range: $start to $end")
+
+        return getHealthDataInRange(start, end)
+    }
+
     // Get health data in a specific time range
     private suspend fun getHealthDataInRange(start: Instant, end: Instant): HealthData {
         try {

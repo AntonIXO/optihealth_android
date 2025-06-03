@@ -11,7 +11,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,18 +37,27 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -73,6 +84,10 @@ import org.devpins.pihs.health.HealthRepository
 import org.devpins.pihs.health.SyncStatus
 import org.devpins.pihs.ui.theme.PIHSTheme
 import java.security.MessageDigest
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 
@@ -159,6 +174,18 @@ class MainActivity : ComponentActivity() {
                                 Log.d("HealthConnect", "MainActivity: Health data sync completed")
                             }
                         },
+                        onSyncDataInRange = { startTime, endTime ->
+                            Log.d("HealthConnect", "MainActivity: Sync data in range button clicked: $startTime to $endTime")
+                            scope.launch {
+                                Log.d("HealthConnect", "MainActivity: Starting health data sync in range")
+                                healthRepository.syncHealthDataInRange(startTime, endTime)
+                                Log.d("HealthConnect", "MainActivity: Health data sync in range completed")
+                            }
+                        },
+                        onCancelSync = {
+                            Log.d("HealthConnect", "MainActivity: Cancel sync button clicked")
+                            healthRepository.cancelSync()
+                        },
                         isLoggedIn = isLoggedIn,
                         supabaseClient = supabaseClient // Pass supabaseClient here
                     )
@@ -184,6 +211,8 @@ fun MainScreen(
     onRequestPermissions: () -> Unit,
     onOpenHealthConnect: () -> Unit,
     onSyncData: () -> Unit,
+    onSyncDataInRange: (Instant, Instant) -> Unit,
+    onCancelSync: () -> Unit,
     isLoggedIn: Boolean = false,
     supabaseClient: SupabaseClient
 ) {
@@ -229,7 +258,9 @@ fun MainScreen(
                 lastSyncTime = lastSyncTime,
                 onRequestPermissions = onRequestPermissions,
                 onOpenHealthConnect = onOpenHealthConnect,
-                onSyncData = onSyncData
+                onSyncData = onSyncData,
+                onSyncDataInRange = onSyncDataInRange,
+                onCancelSync = onCancelSync
             )
         }
     }
@@ -314,6 +345,7 @@ fun AuthenticationCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HealthConnectCard(
     healthConnectAvailability: HealthConnectAvailability,
@@ -322,7 +354,9 @@ fun HealthConnectCard(
     lastSyncTime: String?,
     onRequestPermissions: () -> Unit,
     onOpenHealthConnect: () -> Unit,
-    onSyncData: () -> Unit
+    onSyncData: () -> Unit,
+    onSyncDataInRange: (Instant, Instant) -> Unit,
+    onCancelSync: () -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -549,6 +583,22 @@ fun HealthConnectCard(
                     )
                 }
 
+                // Cancel Sync Button (only visible when syncing)
+                if (syncStatus is SyncStatus.Syncing) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = onCancelSync,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        )
+                    ) {
+                        Text(text = "Cancel Sync")
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Last Sync Time
@@ -589,7 +639,166 @@ fun HealthConnectCard(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
-                // Sync Button
+                // Date Range Selection
+                var startDate by remember { mutableStateOf<LocalDate?>(null) }
+                var endDate by remember { mutableStateOf<LocalDate?>(null) }
+                var showStartDatePicker by remember { mutableStateOf(false) }
+                var showEndDatePicker by remember { mutableStateOf(false) }
+
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Sync Date Range",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "From",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                OutlinedTextField(
+                                    value = startDate?.format(DateTimeFormatter.ofPattern("MMM dd, yyyy")) ?: "Select date",
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { showStartDatePicker = true },
+                                    enabled = false
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "To",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                OutlinedTextField(
+                                    value = endDate?.format(DateTimeFormatter.ofPattern("MMM dd, yyyy")) ?: "Select date",
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { showEndDatePicker = true },
+                                    enabled = false
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = { 
+                                    startDate = null
+                                    endDate = null
+                                },
+                                enabled = startDate != null || endDate != null
+                            ) {
+                                Text("Clear")
+                            }
+
+                            TextButton(
+                                onClick = { showStartDatePicker = true }
+                            ) {
+                                Text("Select Dates")
+                            }
+                        }
+                    }
+                }
+
+                if (showStartDatePicker) {
+                    val startDatePickerState = rememberDatePickerState(
+                        initialSelectedDateMillis = startDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
+                    )
+
+                    DatePickerDialog(
+                        onDismissRequest = { showStartDatePicker = false },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    startDatePickerState.selectedDateMillis?.let { millis ->
+                                        startDate = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()
+                                        showStartDatePicker = false
+                                        // Optionally show end date picker after selecting start date
+                                        showEndDatePicker = true
+                                    }
+                                }
+                            ) {
+                                Text("OK")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = { showStartDatePicker = false }
+                            ) {
+                                Text("Cancel")
+                            }
+                        }
+                    ) {
+                        DatePicker(state = startDatePickerState)
+                    }
+                }
+
+                if (showEndDatePicker) {
+                    val endDatePickerState = rememberDatePickerState(
+                        initialSelectedDateMillis = endDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
+                            ?: LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                    )
+
+                    DatePickerDialog(
+                        onDismissRequest = { showEndDatePicker = false },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    endDatePickerState.selectedDateMillis?.let { endMillis ->
+                                        endDate = Instant.ofEpochMilli(endMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+                                        showEndDatePicker = false
+                                    }
+                                }
+                            ) {
+                                Text("OK")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = { showEndDatePicker = false }
+                            ) {
+                                Text("Cancel")
+                            }
+                        }
+                    ) {
+                        DatePicker(state = endDatePickerState)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Regular Sync Button
                 Button(
                     onClick = onSyncData,
                     enabled = permissionsGranted && syncStatus !is SyncStatus.Syncing,
@@ -602,7 +811,35 @@ fun HealthConnectCard(
                         modifier = Modifier.size(ButtonDefaults.IconSize)
                     )
                     Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
-                    Text(text = "Sync Health Data")
+                    Text(text = "Sync All Health Data")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Date Range Sync Button
+                Button(
+                    onClick = {
+                        if (startDate != null && endDate != null) {
+                            val startInstant = startDate!!.atStartOfDay(ZoneId.systemDefault()).toInstant()
+                            val endInstant = endDate!!.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant()
+                            onSyncDataInRange(startInstant, endInstant)
+                        }
+                    },
+                    enabled = permissionsGranted && syncStatus !is SyncStatus.Syncing && startDate != null && endDate != null,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondary,
+                        contentColor = MaterialTheme.colorScheme.onSecondary
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(ButtonDefaults.IconSize)
+                    )
+                    Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
+                    Text(text = "Sync Selected Date Range")
                 }
             } else if (healthConnectAvailability == HealthConnectAvailability.NOT_INSTALLED) {
                 Surface(

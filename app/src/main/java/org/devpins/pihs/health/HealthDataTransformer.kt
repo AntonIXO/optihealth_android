@@ -32,7 +32,7 @@ class HealthDataTransformer @Inject constructor() {
             steps = transformStepsData(healthData.steps),
             sleep = transformSleepData(healthData.sleep),
             heartRate = transformHeartRateData(healthData.heartRate),
-            exercise = transformExerciseData(healthData.exercise, healthData.distance, healthData.exerciseSegments),
+            exercise = transformExerciseData(healthData.exercise, healthData.distance, healthData.exerciseSegments, healthData.exerciseRoutes),
             weight = transformWeightData(healthData.weight),
             bloodPressure = transformBloodPressureData(healthData.bloodPressure),
             bloodGlucose = transformBloodGlucoseData(healthData.bloodGlucose),
@@ -156,7 +156,8 @@ class HealthDataTransformer @Inject constructor() {
     private fun transformExerciseData(
         exerciseRecords: List<ExerciseSessionRecord>,
         distanceRecords: List<DistanceRecord>,
-        exerciseSegments: List<ExerciseSegment>
+        exerciseSegments: List<ExerciseSegment>,
+        exerciseRoutes: List<ExerciseRoute> = emptyList()
     ): List<PIHSExerciseData> {
         return exerciseRecords.map { record ->
             // Calculate duration in minutes
@@ -189,6 +190,24 @@ class HealthDataTransformer @Inject constructor() {
             // Map exercise type to human-readable name
             val exerciseTypeReadable = mapExerciseTypeToReadableName(record.exerciseType.toString())
 
+            // Find segments that belong to this exercise session
+            val relevantSegments = exerciseSegments.filter {
+                it.startTime >= record.startTime && it.endTime <= record.endTime
+            }
+
+            // Transform segments to PIHSExerciseSegment
+            val transformedSegments = relevantSegments.map { segment ->
+                PIHSExerciseSegment(
+                    startTime = formatInstant(segment.startTime),
+                    endTime = formatInstant(segment.endTime),
+                    segmentType = mapExerciseTypeToReadableName(segment.segmentType.toString())
+                )
+            }
+
+            // For now, routes are not implemented in the manager
+            // This will be implemented in a future update
+            val transformedRoutes = emptyList<PIHSExerciseRoute>()
+
             // Create and return the PIHSExerciseData object with all metrics
             PIHSExerciseData(
                 startTime = formatInstant(record.startTime),
@@ -203,7 +222,9 @@ class HealthDataTransformer @Inject constructor() {
                 maxHeartRateBpm = maxHeartRateBpm,
                 intensityManual = 0, // Not available from Health Connect, would need to be calculated or provided by user
                 stepsCount = stepsCount,
-                activeEnergyKcal = calories // Using the same value as calories for active energy
+                activeEnergyKcal = calories, // Using the same value as calories for active energy
+                segments = transformedSegments,
+                routes = transformedRoutes
             )
         }
     }
@@ -455,7 +476,31 @@ data class PIHSExerciseData(
     val maxHeartRateBpm: Double = 0.0,
     val intensityManual: Int = 0,
     val stepsCount: Long = 0,
-    val activeEnergyKcal: Double = 0.0
+    val activeEnergyKcal: Double = 0.0,
+    val segments: List<PIHSExerciseSegment> = emptyList(),
+    val routes: List<PIHSExerciseRoute> = emptyList()
+)
+
+@Serializable
+data class PIHSExerciseSegment(
+    val startTime: String,
+    val endTime: String,
+    val segmentType: String
+)
+
+@Serializable
+data class PIHSExerciseRoute(
+    val startTime: String,
+    val endTime: String,
+    val waypoints: List<PIHSExerciseRouteWaypoint> = emptyList()
+)
+
+@Serializable
+data class PIHSExerciseRouteWaypoint(
+    val time: String,
+    val latitude: Double,
+    val longitude: Double,
+    val altitude: Double? = null
 )
 
 @Serializable

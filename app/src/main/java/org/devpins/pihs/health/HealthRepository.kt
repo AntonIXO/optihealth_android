@@ -41,6 +41,9 @@ class HealthRepository @Inject constructor(
     private val _lastSyncTime = MutableStateFlow<String?>(null)
     val lastSyncTime: StateFlow<String?> = _lastSyncTime.asStateFlow()
 
+    // Flag to track if sync should be cancelled
+    private var syncCancelled = false
+
     // State flow to track Health Connect availability
     val healthConnectAvailability: StateFlow<HealthConnectAvailability> = healthConnectManager.availability
 
@@ -100,11 +103,20 @@ class HealthRepository @Inject constructor(
         return intent
     }
 
+    // Function to cancel ongoing sync
+    fun cancelSync() {
+        if (_syncStatus.value is SyncStatus.Syncing) {
+            Log.d("HealthConnect", "HealthRepository: Cancelling sync")
+            syncCancelled = true
+        }
+    }
+
     // Sync health data with Supabase
     suspend fun syncHealthData() {
         try {
             Log.d("HealthConnect", "HealthRepository: Starting health data sync")
             _syncStatus.value = SyncStatus.Syncing
+            syncCancelled = false
 
             // Check if Health Connect is available and permissions are granted
             Log.d("HealthConnect", "HealthRepository: Health Connect availability: ${healthConnectAvailability.value}")
@@ -116,6 +128,13 @@ class HealthRepository @Inject constructor(
                 // If we can't get the user ID, we should not proceed with the sync
                 Log.e("HealthConnect", "HealthRepository: User ID is null, cannot proceed with sync")
                 throw IllegalStateException("User not authenticated. Cannot sync health data.")
+            }
+
+            // Check if sync was cancelled
+            if (syncCancelled) {
+                Log.d("HealthConnect", "HealthRepository: Sync cancelled")
+                _syncStatus.value = SyncStatus.Idle
+                return
             }
 
             // Get information about the metric source to determine last sync time
@@ -138,20 +157,48 @@ class HealthRepository @Inject constructor(
 
             Log.d("HealthConnect", "HealthRepository: Fetching data since $startTime")
 
+            // Check if sync was cancelled
+            if (syncCancelled) {
+                Log.d("HealthConnect", "HealthRepository: Sync cancelled")
+                _syncStatus.value = SyncStatus.Idle
+                return
+            }
+
             // Get health data from Health Connect since the last sync
             Log.d("HealthConnect", "HealthRepository: Getting health data from Health Connect")
             val healthData = healthConnectManager.getHealthDataSince(startTime)
             Log.d("HealthConnect", "HealthRepository: Got health data from Health Connect")
+
+            // Check if sync was cancelled
+            if (syncCancelled) {
+                Log.d("HealthConnect", "HealthRepository: Sync cancelled")
+                _syncStatus.value = SyncStatus.Idle
+                return
+            }
 
             // Transform health data to PIHS format
             Log.d("HealthConnect", "HealthRepository: Transforming health data to PIHS format")
             val pihsHealthData = healthDataTransformer.transformHealthData(healthData)
             Log.d("HealthConnect", "HealthRepository: Transformed health data to PIHS format")
 
+            // Check if sync was cancelled
+            if (syncCancelled) {
+                Log.d("HealthConnect", "HealthRepository: Sync cancelled")
+                _syncStatus.value = SyncStatus.Idle
+                return
+            }
+
             // Upload to Supabase
             Log.d("HealthConnect", "HealthRepository: Uploading health data to Supabase")
             uploadToSupabase(pihsHealthData)
             Log.d("HealthConnect", "HealthRepository: Uploaded health data to Supabase")
+
+            // Check if sync was cancelled
+            if (syncCancelled) {
+                Log.d("HealthConnect", "HealthRepository: Sync cancelled")
+                _syncStatus.value = SyncStatus.Idle
+                return
+            }
 
             // Update the last synced timestamp
             updateLastSyncedTimestamp(metricSourceInfo.id)
@@ -161,6 +208,97 @@ class HealthRepository @Inject constructor(
         } catch (e: Exception) {
             Log.e("HealthConnect", "HealthRepository: Error syncing health data", e)
             _syncStatus.value = SyncStatus.Error(e.message ?: "Unknown error")
+        } finally {
+            syncCancelled = false
+        }
+    }
+
+    // Sync health data with Supabase for a specific date range
+    suspend fun syncHealthDataInRange(startTime: Instant, endTime: Instant) {
+        try {
+            Log.d("HealthConnect", "HealthRepository: Starting health data sync for range $startTime to $endTime")
+            _syncStatus.value = SyncStatus.Syncing
+            syncCancelled = false
+
+            // Check if Health Connect is available and permissions are granted
+            Log.d("HealthConnect", "HealthRepository: Health Connect availability: ${healthConnectAvailability.value}")
+            Log.d("HealthConnect", "HealthRepository: Permissions granted: ${permissionsGranted.value}")
+
+            // Get the current user ID
+            val userId = auth.currentUserOrNull()?.id
+            if (userId == null) {
+                // If we can't get the user ID, we should not proceed with the sync
+                Log.e("HealthConnect", "HealthRepository: User ID is null, cannot proceed with sync")
+                throw IllegalStateException("User not authenticated. Cannot sync health data.")
+            }
+
+            // Check if sync was cancelled
+            if (syncCancelled) {
+                Log.d("HealthConnect", "HealthRepository: Sync cancelled")
+                _syncStatus.value = SyncStatus.Idle
+                return
+            }
+
+            // Get information about the metric source
+            val metricSourceInfo = getMetricSourceInfo(userId)
+
+            Log.d("HealthConnect", "HealthRepository: Fetching data from $startTime to $endTime")
+
+            // Check if sync was cancelled
+            if (syncCancelled) {
+                Log.d("HealthConnect", "HealthRepository: Sync cancelled")
+                _syncStatus.value = SyncStatus.Idle
+                return
+            }
+
+            // Get health data from Health Connect for the specified range
+            Log.d("HealthConnect", "HealthRepository: Getting health data from Health Connect")
+            val healthData = healthConnectManager.getHealthDataBetween(startTime, endTime)
+            Log.d("HealthConnect", "HealthRepository: Got health data from Health Connect")
+
+            // Check if sync was cancelled
+            if (syncCancelled) {
+                Log.d("HealthConnect", "HealthRepository: Sync cancelled")
+                _syncStatus.value = SyncStatus.Idle
+                return
+            }
+
+            // Transform health data to PIHS format
+            Log.d("HealthConnect", "HealthRepository: Transforming health data to PIHS format")
+            val pihsHealthData = healthDataTransformer.transformHealthData(healthData)
+            Log.d("HealthConnect", "HealthRepository: Transformed health data to PIHS format")
+
+            // Check if sync was cancelled
+            if (syncCancelled) {
+                Log.d("HealthConnect", "HealthRepository: Sync cancelled")
+                _syncStatus.value = SyncStatus.Idle
+                return
+            }
+
+            // Upload to Supabase
+            Log.d("HealthConnect", "HealthRepository: Uploading health data to Supabase")
+            uploadToSupabase(pihsHealthData)
+            Log.d("HealthConnect", "HealthRepository: Uploaded health data to Supabase")
+
+            // Check if sync was cancelled
+            if (syncCancelled) {
+                Log.d("HealthConnect", "HealthRepository: Sync cancelled")
+                _syncStatus.value = SyncStatus.Idle
+                return
+            }
+
+            // Update the last synced timestamp if the end time is now
+            if (endTime.epochSecond >= Instant.now().minusSeconds(60).epochSecond) {
+                updateLastSyncedTimestamp(metricSourceInfo.id)
+            }
+
+            _syncStatus.value = SyncStatus.Success
+            Log.d("HealthConnect", "HealthRepository: Health data sync for range completed successfully")
+        } catch (e: Exception) {
+            Log.e("HealthConnect", "HealthRepository: Error syncing health data for range", e)
+            _syncStatus.value = SyncStatus.Error(e.message ?: "Unknown error")
+        } finally {
+            syncCancelled = false
         }
     }
 
@@ -262,15 +400,20 @@ class HealthRepository @Inject constructor(
             if (pihsHealthData.weight.isNotEmpty()) {
                 Log.d("HealthConnect", "HealthRepository: Uploading ${pihsHealthData.weight.size} weight records")
                 pihsHealthData.weight.forEach { weightRecord ->
-                    val dataPoint = buildJsonObject {
-                        put("user_id", userId)
-                        put("metric_source_id", metricSourceId)
-                        put("timestamp", weightRecord.time)
-                        put("metric_name", "body_weight_mass_kg")
-                        put("value_numeric", weightRecord.weight)
-                        put("unit", "kg")
+                    // Skip if weight is 0
+                    if (weightRecord.weight > 0) {
+                        val dataPoint = buildJsonObject {
+                            put("user_id", userId)
+                            put("metric_source_id", metricSourceId)
+                            put("timestamp", weightRecord.time)
+                            put("metric_name", "body_weight_mass_kg")
+                            put("value_numeric", weightRecord.weight)
+                            put("unit", "kg")
+                        }
+                        postgrest["data_points"].insert(dataPoint)
+                    } else {
+                        Log.d("HealthConnect", "HealthRepository: Skipping weight record with value 0")
                     }
-                    postgrest["data_points"].insert(dataPoint)
                 }
                 Log.d("HealthConnect", "HealthRepository: Uploaded weight records to data_points table")
             }
@@ -361,48 +504,56 @@ class HealthRepository @Inject constructor(
         // Upload sleep metrics
         pihsHealthData.sleep.forEach { sleepRecord ->
             // Total sleep duration
-            val totalSleepDurationPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", sleepRecord.endTime)
-                put("metric_name", "total_sleep_duration_minutes")
-                put("value_numeric", sleepRecord.totalSleepDurationMinutes)
-                put("unit", "minutes")
+            if (sleepRecord.totalSleepDurationMinutes > 0) {
+                val totalSleepDurationPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", sleepRecord.endTime)
+                    put("metric_name", "total_sleep_duration_minutes")
+                    put("value_numeric", sleepRecord.totalSleepDurationMinutes)
+                    put("unit", "minutes")
+                }
+                postgrest["data_points"].insert(totalSleepDurationPoint)
             }
-            postgrest["data_points"].insert(totalSleepDurationPoint)
 
             // Deep sleep duration
-            val deepSleepDurationPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", sleepRecord.endTime)
-                put("metric_name", "deep_sleep_duration_minutes")
-                put("value_numeric", sleepRecord.deepSleepDurationMinutes)
-                put("unit", "minutes")
+            if (sleepRecord.deepSleepDurationMinutes > 0) {
+                val deepSleepDurationPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", sleepRecord.endTime)
+                    put("metric_name", "deep_sleep_duration_minutes")
+                    put("value_numeric", sleepRecord.deepSleepDurationMinutes)
+                    put("unit", "minutes")
+                }
+                postgrest["data_points"].insert(deepSleepDurationPoint)
             }
-            postgrest["data_points"].insert(deepSleepDurationPoint)
 
             // Light sleep duration
-            val lightSleepDurationPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", sleepRecord.endTime)
-                put("metric_name", "light_sleep_duration_minutes")
-                put("value_numeric", sleepRecord.lightSleepDurationMinutes)
-                put("unit", "minutes")
+            if (sleepRecord.lightSleepDurationMinutes > 0) {
+                val lightSleepDurationPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", sleepRecord.endTime)
+                    put("metric_name", "light_sleep_duration_minutes")
+                    put("value_numeric", sleepRecord.lightSleepDurationMinutes)
+                    put("unit", "minutes")
+                }
+                postgrest["data_points"].insert(lightSleepDurationPoint)
             }
-            postgrest["data_points"].insert(lightSleepDurationPoint)
 
             // REM sleep duration
-            val remSleepDurationPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", sleepRecord.endTime)
-                put("metric_name", "rem_sleep_duration_minutes")
-                put("value_numeric", sleepRecord.remSleepDurationMinutes)
-                put("unit", "minutes")
+            if (sleepRecord.remSleepDurationMinutes > 0) {
+                val remSleepDurationPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", sleepRecord.endTime)
+                    put("metric_name", "rem_sleep_duration_minutes")
+                    put("value_numeric", sleepRecord.remSleepDurationMinutes)
+                    put("unit", "minutes")
+                }
+                postgrest["data_points"].insert(remSleepDurationPoint)
             }
-            postgrest["data_points"].insert(remSleepDurationPoint)
 
             // Sleep score (if available)
             if (sleepRecord.sleepScore > 0) {
@@ -418,174 +569,199 @@ class HealthRepository @Inject constructor(
             }
 
             // Sleep efficiency
-            val sleepEfficiencyPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", sleepRecord.endTime)
-                put("metric_name", "sleep_efficiency_percentage")
-                put("value_numeric", sleepRecord.sleepEfficiencyPercentage)
-                put("unit", "percent")
+            if (sleepRecord.sleepEfficiencyPercentage > 0) {
+                val sleepEfficiencyPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", sleepRecord.endTime)
+                    put("metric_name", "sleep_efficiency_percentage")
+                    put("value_numeric", sleepRecord.sleepEfficiencyPercentage)
+                    put("unit", "percent")
+                }
+                postgrest["data_points"].insert(sleepEfficiencyPoint)
             }
-            postgrest["data_points"].insert(sleepEfficiencyPoint)
 
             // Sleep latency
-            val sleepLatencyPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", sleepRecord.endTime)
-                put("metric_name", "sleep_latency_minutes")
-                put("value_numeric", sleepRecord.sleepLatencyMinutes)
-                put("unit", "minutes")
+            if (sleepRecord.sleepLatencyMinutes > 0) {
+                val sleepLatencyPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", sleepRecord.endTime)
+                    put("metric_name", "sleep_latency_minutes")
+                    put("value_numeric", sleepRecord.sleepLatencyMinutes)
+                    put("unit", "minutes")
+                }
+                postgrest["data_points"].insert(sleepLatencyPoint)
             }
-            postgrest["data_points"].insert(sleepLatencyPoint)
 
             // Awakenings count
-            val awakeningsCountPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", sleepRecord.endTime)
-                put("metric_name", "awakenings_count")
-                put("value_numeric", sleepRecord.awakeningsCount.toDouble())
-                put("unit", "count")
+            if (sleepRecord.awakeningsCount > 0) {
+                val awakeningsCountPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", sleepRecord.endTime)
+                    put("metric_name", "awakenings_count")
+                    put("value_numeric", sleepRecord.awakeningsCount.toDouble())
+                    put("unit", "count")
+                }
+                postgrest["data_points"].insert(awakeningsCountPoint)
             }
-            postgrest["data_points"].insert(awakeningsCountPoint)
 
             // Time in bed
-            val timeInBedPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", sleepRecord.endTime)
-                put("metric_name", "time_in_bed_minutes")
-                put("value_numeric", sleepRecord.timeInBedMinutes)
-                put("unit", "minutes")
+            if (sleepRecord.timeInBedMinutes > 0) {
+                val timeInBedPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", sleepRecord.endTime)
+                    put("metric_name", "time_in_bed_minutes")
+                    put("value_numeric", sleepRecord.timeInBedMinutes)
+                    put("unit", "minutes")
+                }
+                postgrest["data_points"].insert(timeInBedPoint)
             }
-            postgrest["data_points"].insert(timeInBedPoint)
         }
 
         // Upload heart rate data
         pihsHealthData.heartRate.forEach { hrRecord ->
             hrRecord.samples.forEach { sample ->
-                val dataPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", sample.time)
-                    put("metric_name", "heartrate_timeseries_bpm")
-                    put("value_numeric", sample.beatsPerMinute.toDouble())
-                    put("unit", "bpm")
+                if (sample.beatsPerMinute > 0) {
+                    val dataPoint = buildJsonObject {
+                        put("user_id", userId)
+                        put("metric_source_id", metricSourceId)
+                        put("timestamp", sample.time)
+                        put("metric_name", "heartrate_timeseries_bpm")
+                        put("value_numeric", sample.beatsPerMinute.toDouble())
+                        put("unit", "bpm")
+                    }
+                    postgrest["data_points"].insert(dataPoint)
                 }
-                postgrest["data_points"].insert(dataPoint)
             }
         }
 
         // Upload blood pressure data
         pihsHealthData.bloodPressure.forEach { bpRecord ->
-            // Systolic
-            val systolicPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", bpRecord.time)
-                put("metric_name", "bloodpressure_systolic_mmhg")
-                put("value_numeric", bpRecord.systolic)
-                put("unit", "mmHg")
-            }
-            postgrest["data_points"].insert(systolicPoint)
+            // Only upload if both systolic and diastolic are > 0
+            if (bpRecord.systolic > 0 && bpRecord.diastolic > 0) {
+                // Systolic
+                val systolicPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", bpRecord.time)
+                    put("metric_name", "bloodpressure_systolic_mmhg")
+                    put("value_numeric", bpRecord.systolic)
+                    put("unit", "mmHg")
+                }
+                postgrest["data_points"].insert(systolicPoint)
 
-            // Diastolic
-            val diastolicPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", bpRecord.time)
-                put("metric_name", "bloodpressure_diastolic_mmhg")
-                put("value_numeric", bpRecord.diastolic)
-                put("unit", "mmHg")
+                // Diastolic
+                val diastolicPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", bpRecord.time)
+                    put("metric_name", "bloodpressure_diastolic_mmhg")
+                    put("value_numeric", bpRecord.diastolic)
+                    put("unit", "mmHg")
+                }
+                postgrest["data_points"].insert(diastolicPoint)
             }
-            postgrest["data_points"].insert(diastolicPoint)
         }
 
         // Upload blood glucose data
         pihsHealthData.bloodGlucose.forEach { bgRecord ->
-            val dataPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", bgRecord.time)
-                put("metric_name", "bloodglucose_level_mmolL")
-                put("value_numeric", bgRecord.level)
-                put("unit", "mmol/L")
-                put("value_json", buildJsonObject {
-                    put("specimen_source", bgRecord.specimenSource)
-                    put("meal_type", bgRecord.mealType)
-                })
+            if (bgRecord.level > 0) {
+                val dataPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", bgRecord.time)
+                    put("metric_name", "bloodglucose_level_mmolL")
+                    put("value_numeric", bgRecord.level)
+                    put("unit", "mmol/L")
+                    put("value_json", buildJsonObject {
+                        put("specimen_source", bgRecord.specimenSource)
+                        put("meal_type", bgRecord.mealType)
+                    })
+                }
+                postgrest["data_points"].insert(dataPoint)
             }
-            postgrest["data_points"].insert(dataPoint)
         }
 
         // Upload body temperature data
         pihsHealthData.bodyTemperature.forEach { tempRecord ->
-            val dataPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", tempRecord.time)
-                put("metric_name", "bodytemperature_reading_celsius")
-                put("value_numeric", tempRecord.temperature)
-                put("unit", "celsius")
-                put("value_json", buildJsonObject {
-                    put("measurement_location", tempRecord.measurementLocation)
-                })
+            if (tempRecord.temperature > 0) {
+                val dataPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", tempRecord.time)
+                    put("metric_name", "bodytemperature_reading_celsius")
+                    put("value_numeric", tempRecord.temperature)
+                    put("unit", "celsius")
+                    put("value_json", buildJsonObject {
+                        put("measurement_location", tempRecord.measurementLocation)
+                    })
+                }
+                postgrest["data_points"].insert(dataPoint)
             }
-            postgrest["data_points"].insert(dataPoint)
         }
 
         // Upload oxygen saturation data
         pihsHealthData.oxygenSaturation.forEach { o2Record ->
-            val dataPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", o2Record.time)
-                put("metric_name", "spo2_reading_percentage")
-                put("value_numeric", o2Record.saturation)
-                put("unit", "percent")
+            if (o2Record.saturation > 0) {
+                val dataPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", o2Record.time)
+                    put("metric_name", "spo2_reading_percentage")
+                    put("value_numeric", o2Record.saturation)
+                    put("unit", "percent")
+                }
+                postgrest["data_points"].insert(dataPoint)
             }
-            postgrest["data_points"].insert(dataPoint)
         }
 
         // Upload respiratory rate data
         pihsHealthData.respiratoryRate.forEach { rrRecord ->
-            val dataPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", rrRecord.time)
-                put("metric_name", "respiratoryrate_reading_bpm")
-                put("value_numeric", rrRecord.rate)
-                put("unit", "breaths_per_minute")
+            if (rrRecord.rate > 0) {
+                val dataPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", rrRecord.time)
+                    put("metric_name", "respiratoryrate_reading_bpm")
+                    put("value_numeric", rrRecord.rate)
+                    put("unit", "breaths_per_minute")
+                }
+                postgrest["data_points"].insert(dataPoint)
             }
-            postgrest["data_points"].insert(dataPoint)
         }
 
         // Upload steps data
         pihsHealthData.steps.forEach { stepsRecord ->
-            val dataPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", stepsRecord.endTime)
-                put("metric_name", "activity_steps_total_count")
-                put("value_numeric", stepsRecord.count.toDouble())
-                put("unit", "count")
+            if (stepsRecord.count > 0) {
+                val dataPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", stepsRecord.endTime)
+                    put("metric_name", "activity_steps_total_count")
+                    put("value_numeric", stepsRecord.count.toDouble())
+                    put("unit", "count")
+                }
+                postgrest["data_points"].insert(dataPoint)
             }
-            postgrest["data_points"].insert(dataPoint)
         }
 
         // Upload exercise metrics to data_points table
         pihsHealthData.exercise.forEach { exerciseRecord ->
             // Upload workout duration
-            val workoutDurationPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", exerciseRecord.endTime)
-                put("metric_name", "workout_duration_minutes")
-                put("value_numeric", exerciseRecord.durationMinutes)
-                put("unit", "minutes")
+            if (exerciseRecord.durationMinutes > 0) {
+                val workoutDurationPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", exerciseRecord.endTime)
+                    put("metric_name", "workout_duration_minutes")
+                    put("value_numeric", exerciseRecord.durationMinutes)
+                    put("unit", "minutes")
+                }
+                postgrest["data_points"].insert(workoutDurationPoint)
             }
-            postgrest["data_points"].insert(workoutDurationPoint)
 
             // Upload workout calories burned
             if (exerciseRecord.calories > 0) {
@@ -689,55 +865,62 @@ class HealthRepository @Inject constructor(
             }
 
             // Upload exercise minutes total
-            val exerciseMinutesPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", exerciseRecord.endTime)
-                put("metric_name", "exercise_minutes_total")
-                put("value_numeric", exerciseRecord.durationMinutes)
-                put("unit", "minutes")
+            if (exerciseRecord.durationMinutes > 0) {
+                val exerciseMinutesPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", exerciseRecord.endTime)
+                    put("metric_name", "exercise_minutes_total")
+                    put("value_numeric", exerciseRecord.durationMinutes)
+                    put("unit", "minutes")
+                }
+                postgrest["data_points"].insert(exerciseMinutesPoint)
             }
-            postgrest["data_points"].insert(exerciseMinutesPoint)
         }
 
         // Upload nutrition data to events table
         pihsHealthData.nutrition.forEach { nutritionRecord ->
-            // Calculate duration in minutes
-            val startInstant = Instant.parse(nutritionRecord.startTime)
-            val endInstant = Instant.parse(nutritionRecord.endTime)
-            val durationMinutes = (endInstant.epochSecond - startInstant.epochSecond) / 60
+            // Skip if all nutrition values are 0
+            if (nutritionRecord.calories > 0 || nutritionRecord.protein > 0 || nutritionRecord.fat > 0 || nutritionRecord.carbs > 0) {
+                // Calculate duration in minutes
+                val startInstant = Instant.parse(nutritionRecord.startTime)
+                val endInstant = Instant.parse(nutritionRecord.endTime)
+                val durationMinutes = (endInstant.epochSecond - startInstant.epochSecond) / 60
 
-            // Create properties JSON object with nutrition details
-            val properties = buildJsonObject {
-                put("calories", nutritionRecord.calories)
-                put("protein", nutritionRecord.protein)
-                put("fat", nutritionRecord.fat)
-                put("carbs", nutritionRecord.carbs)
-            }
+                // Create properties JSON object with nutrition details
+                val properties = buildJsonObject {
+                    put("calories", nutritionRecord.calories)
+                    put("protein", nutritionRecord.protein)
+                    put("fat", nutritionRecord.fat)
+                    put("carbs", nutritionRecord.carbs)
+                }
 
-            val event = buildJsonObject {
-                put("user_id", userId)
-                put("event_name", "Meal - ${nutritionRecord.name.ifEmpty { "Unspecified" }}")
-                put("start_timestamp", nutritionRecord.startTime)
-                put("end_timestamp", nutritionRecord.endTime)
-                put("duration_minutes", durationMinutes)
-                put("category", "diet")
-                put("properties", properties)
+                val event = buildJsonObject {
+                    put("user_id", userId)
+                    put("event_name", "Meal - ${nutritionRecord.name.ifEmpty { "Unspecified" }}")
+                    put("start_timestamp", nutritionRecord.startTime)
+                    put("end_timestamp", nutritionRecord.endTime)
+                    put("duration_minutes", durationMinutes)
+                    put("category", "diet")
+                    put("properties", properties)
+                }
+                postgrest["events"].insert(event)
             }
-            postgrest["events"].insert(event)
         }
 
         // Upload hydration data to data_points table
         pihsHealthData.hydration.forEach { hydrationRecord ->
-            val dataPoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", hydrationRecord.endTime)
-                put("metric_name", "hydration_intake_liters")
-                put("value_numeric", hydrationRecord.volume)
-                put("unit", "L")
+            if (hydrationRecord.volume > 0) {
+                val dataPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", hydrationRecord.endTime)
+                    put("metric_name", "hydration_intake_liters")
+                    put("value_numeric", hydrationRecord.volume)
+                    put("unit", "L")
+                }
+                postgrest["data_points"].insert(dataPoint)
             }
-            postgrest["data_points"].insert(dataPoint)
         }
     }
 }
