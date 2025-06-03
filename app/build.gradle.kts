@@ -42,6 +42,11 @@ android {
         buildConfig = true
     }
     buildToolsVersion = "36.0.0"
+    packaging {
+        resources {
+            excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+        }
+    }
 }
 
 dependencies {
@@ -54,6 +59,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.identity.jvm)
 
     // Supabase - using the correct package names
     val supabaseVersion = "3.1.4" // Consolidate version
@@ -61,6 +67,11 @@ dependencies {
     implementation("io.github.jan-tennert.supabase:postgrest-kt")
     implementation("io.github.jan-tennert.supabase:auth-kt")
     implementation("io.github.jan-tennert.supabase:realtime-kt")
+
+    // Credential Manager for Google Sign-In
+    implementation(libs.androidx.credentials)
+    implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
     // Ktor
     val ktorVersion = "3.1.1" // Updated Ktor version

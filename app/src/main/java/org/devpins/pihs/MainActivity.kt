@@ -1,8 +1,10 @@
 package org.devpins.pihs
 
+import android.R.attr.text
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -33,12 +35,21 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import androidx.fragment.app.FragmentManager.TAG
+import com.android.identity.util.UUID
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import dagger.hilt.android.AndroidEntryPoint
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.Google
+import io.github.jan.supabase.auth.providers.builtin.IDToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -46,11 +57,9 @@ import org.devpins.pihs.health.HealthConnectAvailability
 import org.devpins.pihs.health.HealthRepository
 import org.devpins.pihs.health.SyncStatus
 import org.devpins.pihs.ui.theme.PIHSTheme
+import java.security.MessageDigest
 import javax.inject.Inject
 
-// Hardcoded Supabase credentials
-private const val SUPABASE_URL = "https://gdvghuytkemlslumyeov.supabase.co"
-private const val SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkdmdodXl0a2VtbHNsdW15ZW92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg4NzM0NTAsImV4cCI6MjA2NDQ0OTQ1MH0.HcdUWxm2Rbypxk8gIXrLkLvOxQg6BDpMF72eE4DXxQA"
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -114,11 +123,6 @@ class MainActivity : ComponentActivity() {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     MainScreen(
                         modifier = Modifier.padding(innerPadding),
-                        onGoogleSignInClick = { 
-                            scope.launch {
-                                signInWithGoogle()
-                            }
-                        },
                         healthConnectAvailability = healthConnectAvailability,
                         permissionsGranted = permissionsGranted,
                         syncStatus = syncStatus,
@@ -142,7 +146,8 @@ class MainActivity : ComponentActivity() {
                                 Log.d("HealthConnect", "MainActivity: Health data sync completed")
                             }
                         },
-                        isLoggedIn = isLoggedIn
+                        isLoggedIn = isLoggedIn,
+                        supabaseClient = supabaseClient // Pass supabaseClient here
                     )
                 }
             }
@@ -154,29 +159,19 @@ class MainActivity : ComponentActivity() {
         // Note: Deeplink handling will be implemented according to the Supabase documentation
         // This is a placeholder for now
     }
-
-    private suspend fun signInWithGoogle() {
-        try {
-            // Launch Google sign-in flow
-            supabaseClient.auth.signInWith(Google)
-            Log.d("LOGIN", "Google sign-in initiated")
-        } catch (e: Exception) {
-            Log.e("LOGIN", "Google Sign-In error: ${e.message}")
-        }
-    }
 }
 
 @Composable
 fun MainScreen(
     modifier: Modifier = Modifier,
-    onGoogleSignInClick: () -> Unit,
     healthConnectAvailability: HealthConnectAvailability,
     permissionsGranted: Boolean,
     syncStatus: SyncStatus,
     onRequestPermissions: () -> Unit,
     onOpenHealthConnect: () -> Unit,
     onSyncData: () -> Unit,
-    isLoggedIn: Boolean = false
+    isLoggedIn: Boolean = false,
+    supabaseClient: SupabaseClient // Add supabaseClient as a parameter
 ) {
     Column(
         modifier = modifier.fillMaxSize().padding(16.dp),
@@ -219,11 +214,11 @@ fun MainScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        Button(onClick = onGoogleSignInClick) {
-            Text(text = "Sign in with Google")
-        }
+        // Google Sign-In Button
+        GoogleSignInButton(supabaseClient = supabaseClient) // Pass supabaseClient here
 
         Spacer(modifier = Modifier.height(16.dp))
+
         Divider()
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -355,5 +350,64 @@ fun MainScreen(
                 color = MaterialTheme.colorScheme.error
             )
         }
+    }
+}
+
+@Composable
+fun GoogleSignInButton(supabaseClient: SupabaseClient) { // Add supabaseClient as a parameter
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    val onClick: () -> Unit = {
+        val credentialManager = CredentialManager.create(context)
+
+        val rawNonce = UUID.randomUUID().toString()
+        val bytes = rawNonce.toByteArray()
+        val md = MessageDigest.getInstance("SHA-256")
+        val digest = md.digest(bytes)
+        val hashedNonce = digest.fold("") { str, it -> str + "%02x".format(it)}
+
+        val googleIdOption: GetGoogleIdOption = GetGoogleIdOption.Builder()
+            .setFilterByAuthorizedAccounts(true)
+            .setFilterByAuthorizedAccounts(false)
+            .setServerClientId("421259338685-acb3ddfpdkgc055ejpil1bj5oltes1tu.apps.googleusercontent.com")
+            .setNonce(hashedNonce)
+            .build()
+
+        val request: GetCredentialRequest = GetCredentialRequest.Builder()
+            .addCredentialOption(googleIdOption)
+            .build()
+
+        coroutineScope.launch {
+            try {
+                val result = credentialManager.getCredential(
+                    request = request,
+                    context = context,
+                )
+                val credential = result.credential
+
+                val googleIdTokenCredential = GoogleIdTokenCredential
+                    .createFrom(credential.data)
+
+                val googleIdToken = googleIdTokenCredential.idToken
+
+                supabaseClient.auth.signInWith(IDToken) {
+                    idToken = googleIdToken
+                    provider = Google
+                    nonce = rawNonce
+                }
+
+                Log.i("test", googleIdToken)
+                Toast.makeText(context, "You are signed in!", Toast.LENGTH_SHORT).show()
+            } catch (e: androidx.credentials.exceptions.GetCredentialException) {
+                Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show()
+            } catch (e: GoogleIdTokenParsingException) {
+                Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    Button(onClick = onClick) { // Remove "this: RowScope"
+        Text(text = "Sign in with Google")
     }
 }

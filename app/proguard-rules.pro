@@ -19,3 +19,9 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+-keep class io.github.jan.supabase.** { *; }
+-keep class io.ktor.** { *; }
+-keepnames class kotlinx.serialization.** { *; }
+-keep class androidx.credentials.** { *; }
+-keep class com.google.android.libraries.identity.googleid.** { *; }
