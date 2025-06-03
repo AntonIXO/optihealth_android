@@ -1,6 +1,5 @@
 package org.devpins.pihs
 
-import android.R.attr.text
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -13,7 +12,6 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,7 +35,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -47,13 +44,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -61,7 +54,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
-import androidx.fragment.app.FragmentManager.TAG
 import com.android.identity.util.UUID
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -75,7 +67,6 @@ import io.github.jan.supabase.auth.providers.builtin.IDToken
 import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import org.devpins.pihs.health.HealthConnectAvailability
 import org.devpins.pihs.health.HealthRepository
@@ -628,84 +619,6 @@ fun HealthConnectCard(
                 }
             }
         }
-    }
-}
-
-@Composable
-fun GoogleSignInButton(supabaseClient: SupabaseClient) { // Original implementation
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-
-    val onClick: () -> Unit = {
-        val credentialManager = CredentialManager.create(context)
-
-        val rawNonce = UUID.randomUUID().toString()
-        val bytes = rawNonce.toByteArray()
-        val md = MessageDigest.getInstance("SHA-256")
-        val digest = md.digest(bytes)
-        val hashedNonce = digest.fold("") { str, it -> str + "%02x".format(it)}
-
-        val googleIdOption: GetGoogleIdOption = GetGoogleIdOption.Builder()
-            .setFilterByAuthorizedAccounts(true)
-            .setFilterByAuthorizedAccounts(false)
-            .setServerClientId("421259338685-acb3ddfpdkgc055ejpil1bj5oltes1tu.apps.googleusercontent.com")
-            .setNonce(hashedNonce)
-            .build()
-
-        val request: GetCredentialRequest = GetCredentialRequest.Builder()
-            .addCredentialOption(googleIdOption)
-            .build()
-
-        coroutineScope.launch {
-            try {
-                val result = credentialManager.getCredential(
-                    request = request,
-                    context = context,
-                )
-                val credential = result.credential
-
-                val googleIdTokenCredential = GoogleIdTokenCredential
-                    .createFrom(credential.data)
-
-                val googleIdToken = googleIdTokenCredential.idToken
-
-                supabaseClient.auth.signInWith(IDToken) {
-                    idToken = googleIdToken
-                    provider = Google
-                    nonce = rawNonce
-                }
-
-                Log.i("test", googleIdToken)
-                Toast.makeText(context, "You are signed in!", Toast.LENGTH_SHORT).show()
-            } catch (e: androidx.credentials.exceptions.GetCredentialException) {
-                Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show()
-            } catch (e: GoogleIdTokenParsingException) {
-                Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    Button(
-        onClick = onClick,
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Text(text = "Sign in with Google")
-    }
-}
-
-@Composable
-fun GoogleSignOutButton(supabaseClient: SupabaseClient) {
-    val coroutineScope = rememberCoroutineScope()
-    val onClick: () -> Unit = {
-        coroutineScope.launch {
-            supabaseClient.auth.signOut(SignOutScope.LOCAL)
-        }
-    }
-    Button(
-        onClick = onClick,
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Text(text = "Sign out")
     }
 }
 
