@@ -8,6 +8,9 @@ import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.records.BloodGlucoseRecord
 import androidx.health.connect.client.records.BloodPressureRecord
 import androidx.health.connect.client.records.BodyTemperatureRecord
+import androidx.health.connect.client.records.DistanceRecord
+import androidx.health.connect.client.records.ExerciseRoute
+import androidx.health.connect.client.records.ExerciseSegment
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.HydrationRecord
@@ -347,6 +350,80 @@ class HealthConnectManager @Inject constructor(
         }
     }
 
+    /**
+     * Obtains a list of DistanceRecord records in a specified time frame.
+     */
+    suspend fun readDistanceData(start: Instant, end: Instant): List<DistanceRecord> {
+        Log.d("HealthConnect", "HealthConnectManager: Reading distance data from $start to $end")
+        return healthConnectClient?.let { client ->
+            try {
+                val request = ReadRecordsRequest(
+                    recordType = DistanceRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
+                )
+                Log.d("HealthConnect", "HealthConnectManager: Created distance data request: $request")
+
+                val response = client.readRecords(request)
+                Log.d("HealthConnect", "HealthConnectManager: Read ${response.records.size} distance records")
+                response.records
+            } catch (e: Exception) {
+                Log.e("HealthConnect", "HealthConnectManager: Error reading distance data", e)
+                emptyList()
+            }
+        } ?: run {
+            Log.d("HealthConnect", "HealthConnectManager: Cannot read distance data, client is null")
+            emptyList()
+        }
+    }
+
+    /**
+     * Obtains a list of ExerciseSegment records in a specified time frame.
+     */
+    suspend fun readExerciseSegments(start: Instant, end: Instant): List<ExerciseSegment> {
+        Log.d("HealthConnect", "HealthConnectManager: Reading exercise segments from $start to $end")
+        return healthConnectClient?.let { client ->
+            try {
+                // ExerciseSegment is part of ExerciseSessionRecord, so we need to get them from there
+                val exerciseSessions = readExerciseSessions(start, end)
+                val segments = mutableListOf<ExerciseSegment>()
+
+                exerciseSessions.forEach { session ->
+                    segments.addAll(session.segments)
+                }
+
+                Log.d("HealthConnect", "HealthConnectManager: Read ${segments.size} exercise segments")
+                segments
+            } catch (e: Exception) {
+                Log.e("HealthConnect", "HealthConnectManager: Error reading exercise segments", e)
+                emptyList()
+            }
+        } ?: run {
+            Log.d("HealthConnect", "HealthConnectManager: Cannot read exercise segments, client is null")
+            emptyList()
+        }
+    }
+
+    /**
+     * Obtains a list of ExerciseRoute records in a specified time frame.
+     */
+    suspend fun readExerciseRoutes(start: Instant, end: Instant): List<ExerciseRoute> {
+        Log.d("HealthConnect", "HealthConnectManager: Reading exercise routes from $start to $end")
+        return healthConnectClient?.let { client ->
+            try {
+                // For now, return an empty list as we need to implement a proper way to get routes
+                // This will be implemented in a future update
+                Log.d("HealthConnect", "HealthConnectManager: Exercise routes not yet implemented")
+                emptyList()
+            } catch (e: Exception) {
+                Log.e("HealthConnect", "HealthConnectManager: Error reading exercise routes", e)
+                emptyList()
+            }
+        } ?: run {
+            Log.d("HealthConnect", "HealthConnectManager: Cannot read exercise routes, client is null")
+            emptyList()
+        }
+    }
+
     // Get data for the last 30 days
     suspend fun getLastMonthData(): HealthData {
         Log.d("HealthConnect", "HealthConnectManager: Getting data for the last 30 days")
@@ -387,6 +464,9 @@ class HealthConnectManager @Inject constructor(
                 sleep = readSleepData(start, end),
                 heartRate = readHeartRateData(start, end),
                 exercise = readExerciseSessions(start, end), // Use the new method
+                distance = readDistanceData(start, end),
+                exerciseSegments = readExerciseSegments(start, end),
+                exerciseRoutes = readExerciseRoutes(start, end),
                 weight = readWeightInputs(start, end), // Use the new method
                 bloodPressure = readBloodPressureData(start, end),
                 bloodGlucose = readBloodGlucoseData(start, end),
@@ -418,6 +498,9 @@ data class HealthData(
     val sleep: List<SleepSessionRecord> = emptyList(),
     val heartRate: List<HeartRateRecord> = emptyList(),
     val exercise: List<ExerciseSessionRecord> = emptyList(),
+    val distance: List<DistanceRecord> = emptyList(),
+    val exerciseSegments: List<ExerciseSegment> = emptyList(),
+    val exerciseRoutes: List<ExerciseRoute> = emptyList(),
     val weight: List<WeightRecord> = emptyList(),
     val bloodPressure: List<BloodPressureRecord> = emptyList(),
     val bloodGlucose: List<BloodGlucoseRecord> = emptyList(),

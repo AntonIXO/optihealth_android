@@ -574,6 +574,132 @@ class HealthRepository @Inject constructor(
             postgrest["data_points"].insert(dataPoint)
         }
 
+        // Upload exercise metrics to data_points table
+        pihsHealthData.exercise.forEach { exerciseRecord ->
+            // Upload workout duration
+            val workoutDurationPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", exerciseRecord.endTime)
+                put("metric_name", "workout_duration_minutes")
+                put("value_numeric", exerciseRecord.durationMinutes)
+                put("unit", "minutes")
+            }
+            postgrest["data_points"].insert(workoutDurationPoint)
+
+            // Upload workout calories burned
+            if (exerciseRecord.calories > 0) {
+                val workoutCaloriesPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", exerciseRecord.endTime)
+                    put("metric_name", "workout_calories_burned_kcal")
+                    put("value_numeric", exerciseRecord.calories)
+                    put("unit", "kcal")
+                }
+                postgrest["data_points"].insert(workoutCaloriesPoint)
+            }
+
+            // Upload workout distance
+            if (exerciseRecord.distanceKm > 0) {
+                val workoutDistancePoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", exerciseRecord.endTime)
+                    put("metric_name", "workout_distance_km")
+                    put("value_numeric", exerciseRecord.distanceKm)
+                    put("unit", "km")
+                }
+                postgrest["data_points"].insert(workoutDistancePoint)
+            }
+
+            // Upload workout average heart rate
+            if (exerciseRecord.averageHeartRateBpm > 0) {
+                val workoutAvgHrPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", exerciseRecord.endTime)
+                    put("metric_name", "workout_average_heart_rate_bpm")
+                    put("value_numeric", exerciseRecord.averageHeartRateBpm)
+                    put("unit", "bpm")
+                }
+                postgrest["data_points"].insert(workoutAvgHrPoint)
+            }
+
+            // Upload workout max heart rate
+            if (exerciseRecord.maxHeartRateBpm > 0) {
+                val workoutMaxHrPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", exerciseRecord.endTime)
+                    put("metric_name", "workout_max_heart_rate_bpm")
+                    put("value_numeric", exerciseRecord.maxHeartRateBpm)
+                    put("unit", "bpm")
+                }
+                postgrest["data_points"].insert(workoutMaxHrPoint)
+            }
+
+            // Upload workout type as text
+            val workoutTypePoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", exerciseRecord.endTime)
+                put("metric_name", "workout_type")
+                put("value_text", exerciseRecord.exerciseType)
+            }
+            postgrest["data_points"].insert(workoutTypePoint)
+
+            // Upload workout intensity if available
+            if (exerciseRecord.intensityManual > 0) {
+                val workoutIntensityPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", exerciseRecord.endTime)
+                    put("metric_name", "workout_intensity_manual")
+                    put("value_numeric", exerciseRecord.intensityManual.toDouble())
+                    put("unit", "scale")
+                }
+                postgrest["data_points"].insert(workoutIntensityPoint)
+            }
+
+            // Upload steps count from workout if available
+            if (exerciseRecord.stepsCount > 0) {
+                val workoutStepsPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", exerciseRecord.endTime)
+                    put("metric_name", "steps_count")
+                    put("value_numeric", exerciseRecord.stepsCount.toDouble())
+                    put("unit", "count")
+                }
+                postgrest["data_points"].insert(workoutStepsPoint)
+            }
+
+            // Upload active energy from workout if available
+            if (exerciseRecord.activeEnergyKcal > 0) {
+                val activeEnergyPoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", exerciseRecord.endTime)
+                    put("metric_name", "active_energy_kcal")
+                    put("value_numeric", exerciseRecord.activeEnergyKcal)
+                    put("unit", "kcal")
+                }
+                postgrest["data_points"].insert(activeEnergyPoint)
+            }
+
+            // Upload exercise minutes total
+            val exerciseMinutesPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", exerciseRecord.endTime)
+                put("metric_name", "exercise_minutes_total")
+                put("value_numeric", exerciseRecord.durationMinutes)
+                put("unit", "minutes")
+            }
+            postgrest["data_points"].insert(exerciseMinutesPoint)
+        }
+
         // Upload nutrition data to events table
         pihsHealthData.nutrition.forEach { nutritionRecord ->
             // Calculate duration in minutes

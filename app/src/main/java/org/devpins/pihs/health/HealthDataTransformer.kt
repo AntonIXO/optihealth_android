@@ -3,6 +3,9 @@ package org.devpins.pihs.health
 import androidx.health.connect.client.records.BloodGlucoseRecord
 import androidx.health.connect.client.records.BloodPressureRecord
 import androidx.health.connect.client.records.BodyTemperatureRecord
+import androidx.health.connect.client.records.DistanceRecord
+import androidx.health.connect.client.records.ExerciseRoute
+import androidx.health.connect.client.records.ExerciseSegment
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.HydrationRecord
@@ -29,7 +32,7 @@ class HealthDataTransformer @Inject constructor() {
             steps = transformStepsData(healthData.steps),
             sleep = transformSleepData(healthData.sleep),
             heartRate = transformHeartRateData(healthData.heartRate),
-            exercise = transformExerciseData(healthData.exercise),
+            exercise = transformExerciseData(healthData.exercise, healthData.distance, healthData.exerciseSegments),
             weight = transformWeightData(healthData.weight),
             bloodPressure = transformBloodPressureData(healthData.bloodPressure),
             bloodGlucose = transformBloodGlucoseData(healthData.bloodGlucose),
@@ -150,15 +153,57 @@ class HealthDataTransformer @Inject constructor() {
     }
 
     // Transform exercise data
-    private fun transformExerciseData(exerciseRecords: List<ExerciseSessionRecord>): List<PIHSExerciseData> {
+    private fun transformExerciseData(
+        exerciseRecords: List<ExerciseSessionRecord>,
+        distanceRecords: List<DistanceRecord>,
+        exerciseSegments: List<ExerciseSegment>
+    ): List<PIHSExerciseData> {
         return exerciseRecords.map { record ->
+            // Calculate duration in minutes
+            val durationSeconds = record.endTime.epochSecond - record.startTime.epochSecond
+            val durationMinutes = durationSeconds / 60.0
+
+            // Extract distance in kilometers if available
+            // Find distance records that overlap with this exercise session
+            val relevantDistanceRecords = distanceRecords.filter { 
+                it.startTime <= record.endTime && it.endTime >= record.startTime
+            }
+
+            // Sum up the distances
+            val distanceKm = if (relevantDistanceRecords.isNotEmpty()) {
+                relevantDistanceRecords.sumOf { it.distance.inKilometers }
+            } else {
+                0.0
+            }
+
+            // Extract calories if available
+            val calories = 0.0 // Will be populated from energy records in future
+
+            // Extract heart rate data if available
+            var averageHeartRateBpm = 0.0
+            var maxHeartRateBpm = 0.0
+
+            // Extract steps count if available
+            val stepsCount = 0L // Will be populated from steps records in future
+
+            // Map exercise type to human-readable name
+            val exerciseTypeReadable = mapExerciseTypeToReadableName(record.exerciseType.toString())
+
+            // Create and return the PIHSExerciseData object with all metrics
             PIHSExerciseData(
                 startTime = formatInstant(record.startTime),
                 endTime = formatInstant(record.endTime),
-                exerciseType = record.exerciseType.toString(),
+                exerciseType = exerciseTypeReadable,
                 title = record.title ?: "",
                 notes = record.notes ?: "",
-                calories = 0.0 // Energy data would need to be read separately
+                calories = calories,
+                durationMinutes = durationMinutes,
+                distanceKm = distanceKm,
+                averageHeartRateBpm = averageHeartRateBpm,
+                maxHeartRateBpm = maxHeartRateBpm,
+                intensityManual = 0, // Not available from Health Connect, would need to be calculated or provided by user
+                stepsCount = stepsCount,
+                activeEnergyKcal = calories // Using the same value as calories for active energy
             )
         }
     }
@@ -257,6 +302,83 @@ class HealthDataTransformer @Inject constructor() {
     private fun formatInstant(instant: Instant): String {
         return dateTimeFormatter.format(instant)
     }
+
+    // Map exercise type to human-readable name
+    private fun mapExerciseTypeToReadableName(exerciseType: String): String {
+        return when (exerciseType) {
+            "ARCHERY" -> "Archery"
+            "BADMINTON" -> "Badminton"
+            "BASEBALL" -> "Baseball"
+            "BASKETBALL" -> "Basketball"
+            "BIKING" -> "Biking"
+            "BIKING_STATIONARY" -> "Stationary Biking"
+            "BOOT_CAMP" -> "Boot Camp"
+            "BOXING" -> "Boxing"
+            "CALISTHENICS" -> "Calisthenics"
+            "CRICKET" -> "Cricket"
+            "CROSSFIT" -> "CrossFit"
+            "DANCING" -> "Dancing"
+            "ELLIPTICAL" -> "Elliptical"
+            "FENCING" -> "Fencing"
+            "FOOTBALL_AMERICAN" -> "American Football"
+            "FOOTBALL_AUSTRALIAN" -> "Australian Football"
+            "FRISBEE_DISC" -> "Frisbee"
+            "GOLF" -> "Golf"
+            "GUIDED_BREATHING" -> "Guided Breathing"
+            "GYMNASTICS" -> "Gymnastics"
+            "HANDBALL" -> "Handball"
+            "HIKING" -> "Hiking"
+            "HOCKEY" -> "Hockey"
+            "HORSEBACK_RIDING" -> "Horseback Riding"
+            "ICE_SKATING" -> "Ice Skating"
+            "IN_VEHICLE" -> "In Vehicle"
+            "INTERVAL_TRAINING" -> "Interval Training"
+            "JUMPING_ROPE" -> "Jumping Rope"
+            "KAYAKING" -> "Kayaking"
+            "KETTLEBELL_TRAINING" -> "Kettlebell Training"
+            "KICKBOXING" -> "Kickboxing"
+            "MARTIAL_ARTS" -> "Martial Arts"
+            "MEDITATION" -> "Meditation"
+            "PADDLING" -> "Paddling"
+            "PARAGLIDING" -> "Paragliding"
+            "PILATES" -> "Pilates"
+            "RACQUETBALL" -> "Racquetball"
+            "ROCK_CLIMBING" -> "Rock Climbing"
+            "ROLLER_HOCKEY" -> "Roller Hockey"
+            "ROWING" -> "Rowing"
+            "ROWING_MACHINE" -> "Rowing Machine"
+            "RUGBY" -> "Rugby"
+            "RUNNING" -> "Running"
+            "RUNNING_TREADMILL" -> "Treadmill Running"
+            "SAILING" -> "Sailing"
+            "SCUBA_DIVING" -> "Scuba Diving"
+            "SKATING" -> "Skating"
+            "SKIING" -> "Skiing"
+            "SNOWBOARDING" -> "Snowboarding"
+            "SNOWSHOEING" -> "Snowshoeing"
+            "SOCCER" -> "Soccer"
+            "SOFTBALL" -> "Softball"
+            "SQUASH" -> "Squash"
+            "STAIR_CLIMBING" -> "Stair Climbing"
+            "STAIR_CLIMBING_MACHINE" -> "Stair Climbing Machine"
+            "STRENGTH_TRAINING" -> "Strength Training"
+            "STRETCHING" -> "Stretching"
+            "SURFING" -> "Surfing"
+            "SWIMMING_OPEN_WATER" -> "Open Water Swimming"
+            "SWIMMING_POOL" -> "Pool Swimming"
+            "TABLE_TENNIS" -> "Table Tennis"
+            "TENNIS" -> "Tennis"
+            "VOLLEYBALL" -> "Volleyball"
+            "WALKING" -> "Walking"
+            "WATER_POLO" -> "Water Polo"
+            "WEIGHTLIFTING" -> "Weightlifting"
+            "WHEELCHAIR" -> "Wheelchair"
+            "YOGA" -> "Yoga"
+            "OTHER_WORKOUT" -> "Other Workout"
+            "UNKNOWN" -> "Unknown"
+            else -> exerciseType.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }
+        }
+    }
 }
 
 // PIHS data models for Supabase upload
@@ -326,7 +448,14 @@ data class PIHSExerciseData(
     val exerciseType: String,
     val title: String,
     val notes: String,
-    val calories: Double
+    val calories: Double,
+    val durationMinutes: Double = 0.0,
+    val distanceKm: Double = 0.0,
+    val averageHeartRateBpm: Double = 0.0,
+    val maxHeartRateBpm: Double = 0.0,
+    val intensityManual: Int = 0,
+    val stepsCount: Long = 0,
+    val activeEnergyKcal: Double = 0.0
 )
 
 @Serializable
