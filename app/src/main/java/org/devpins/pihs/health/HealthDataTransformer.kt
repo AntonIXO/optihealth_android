@@ -55,17 +55,82 @@ class HealthDataTransformer @Inject constructor() {
     // Transform sleep data
     private fun transformSleepData(sleepRecords: List<SleepSessionRecord>): List<PIHSSleepData> {
         return sleepRecords.map { record ->
+            // Calculate total duration in bed (from start to end of session)
+            val timeInBedSeconds = record.endTime.epochSecond - record.startTime.epochSecond
+            val timeInBedMinutes = timeInBedSeconds / 60.0
+
+            // Initialize counters for different sleep stages
+            var deepSleepSeconds = 0L
+            var lightSleepSeconds = 0L
+            var remSleepSeconds = 0L
+            var awakeSeconds = 0L
+            var awakeningsCount = 0
+            var lastStageWasAwake = false
+
+            // Process each sleep stage
+            record.stages.forEach { stage ->
+                val stageDurationSeconds = stage.endTime.epochSecond - stage.startTime.epochSecond
+
+                when (stage.stage.toString()) {
+                    "DEEP" -> deepSleepSeconds += stageDurationSeconds
+                    "LIGHT" -> lightSleepSeconds += stageDurationSeconds
+                    "REM" -> remSleepSeconds += stageDurationSeconds
+                    "AWAKE" -> {
+                        awakeSeconds += stageDurationSeconds
+                        if (!lastStageWasAwake) {
+                            awakeningsCount++
+                            lastStageWasAwake = true
+                        }
+                    }
+                    else -> { /* Unknown stage type, ignore */ }
+                }
+
+                // Update lastStageWasAwake for next iteration
+                lastStageWasAwake = stage.stage.toString() == "AWAKE"
+            }
+
+            // Calculate total sleep duration (excluding awake time)
+            val totalSleepSeconds = deepSleepSeconds + lightSleepSeconds + remSleepSeconds
+            val totalSleepMinutes = totalSleepSeconds / 60.0
+
+            // Calculate sleep efficiency (percentage of time in bed spent sleeping)
+            val sleepEfficiency = if (timeInBedSeconds > 0) {
+                (totalSleepSeconds.toDouble() / timeInBedSeconds.toDouble()) * 100.0
+            } else {
+                0.0
+            }
+
+            // Calculate sleep latency (time to fall asleep)
+            // This is an approximation - time from start of session to first non-awake stage
+            var sleepLatencySeconds = 0L
+            if (record.stages.isNotEmpty()) {
+                val firstNonAwakeStage = record.stages.find { it.stage.toString() != "AWAKE" }
+                if (firstNonAwakeStage != null) {
+                    sleepLatencySeconds = firstNonAwakeStage.startTime.epochSecond - record.startTime.epochSecond
+                }
+            }
+
+            // Create and return the PIHSSleepData object with all metrics
             PIHSSleepData(
                 startTime = formatInstant(record.startTime),
                 endTime = formatInstant(record.endTime),
-                duration = record.endTime.epochSecond - record.startTime.epochSecond,
+                duration = timeInBedSeconds,
                 stages = record.stages.map { stage ->
                     PIHSSleepStage(
                         startTime = formatInstant(stage.startTime),
                         endTime = formatInstant(stage.endTime),
                         stage = stage.stage.toString()
                     )
-                }
+                },
+                totalSleepDurationMinutes = totalSleepMinutes,
+                deepSleepDurationMinutes = deepSleepSeconds / 60.0,
+                lightSleepDurationMinutes = lightSleepSeconds / 60.0,
+                remSleepDurationMinutes = remSleepSeconds / 60.0,
+                sleepScore = 0.0, // Sleep score is device-specific and not available from Health Connect
+                sleepEfficiencyPercentage = sleepEfficiency,
+                sleepLatencyMinutes = sleepLatencySeconds / 60.0,
+                awakeningsCount = awakeningsCount,
+                timeInBedMinutes = timeInBedMinutes
             )
         }
     }
@@ -224,7 +289,16 @@ data class PIHSSleepData(
     val startTime: String,
     val endTime: String,
     val duration: Long,
-    val stages: List<PIHSSleepStage> = emptyList()
+    val stages: List<PIHSSleepStage> = emptyList(),
+    val totalSleepDurationMinutes: Double = 0.0,
+    val deepSleepDurationMinutes: Double = 0.0,
+    val lightSleepDurationMinutes: Double = 0.0,
+    val remSleepDurationMinutes: Double = 0.0,
+    val sleepScore: Double = 0.0,
+    val sleepEfficiencyPercentage: Double = 0.0,
+    val sleepLatencyMinutes: Double = 0.0,
+    val awakeningsCount: Int = 0,
+    val timeInBedMinutes: Double = 0.0
 )
 
 @Serializable

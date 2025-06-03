@@ -358,6 +358,110 @@ class HealthRepository @Inject constructor(
 
     // Upload other health metrics to data_points table
     private suspend fun uploadMetricsToDataPoints(pihsHealthData: PIHSHealthData, userId: String, metricSourceId: Long) {
+        // Upload sleep metrics
+        pihsHealthData.sleep.forEach { sleepRecord ->
+            // Total sleep duration
+            val totalSleepDurationPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", sleepRecord.endTime)
+                put("metric_name", "total_sleep_duration_minutes")
+                put("value_numeric", sleepRecord.totalSleepDurationMinutes)
+                put("unit", "minutes")
+            }
+            postgrest["data_points"].insert(totalSleepDurationPoint)
+
+            // Deep sleep duration
+            val deepSleepDurationPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", sleepRecord.endTime)
+                put("metric_name", "deep_sleep_duration_minutes")
+                put("value_numeric", sleepRecord.deepSleepDurationMinutes)
+                put("unit", "minutes")
+            }
+            postgrest["data_points"].insert(deepSleepDurationPoint)
+
+            // Light sleep duration
+            val lightSleepDurationPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", sleepRecord.endTime)
+                put("metric_name", "light_sleep_duration_minutes")
+                put("value_numeric", sleepRecord.lightSleepDurationMinutes)
+                put("unit", "minutes")
+            }
+            postgrest["data_points"].insert(lightSleepDurationPoint)
+
+            // REM sleep duration
+            val remSleepDurationPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", sleepRecord.endTime)
+                put("metric_name", "rem_sleep_duration_minutes")
+                put("value_numeric", sleepRecord.remSleepDurationMinutes)
+                put("unit", "minutes")
+            }
+            postgrest["data_points"].insert(remSleepDurationPoint)
+
+            // Sleep score (if available)
+            if (sleepRecord.sleepScore > 0) {
+                val sleepScorePoint = buildJsonObject {
+                    put("user_id", userId)
+                    put("metric_source_id", metricSourceId)
+                    put("timestamp", sleepRecord.endTime)
+                    put("metric_name", "sleep_score")
+                    put("value_numeric", sleepRecord.sleepScore)
+                    put("unit", "score")
+                }
+                postgrest["data_points"].insert(sleepScorePoint)
+            }
+
+            // Sleep efficiency
+            val sleepEfficiencyPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", sleepRecord.endTime)
+                put("metric_name", "sleep_efficiency_percentage")
+                put("value_numeric", sleepRecord.sleepEfficiencyPercentage)
+                put("unit", "percent")
+            }
+            postgrest["data_points"].insert(sleepEfficiencyPoint)
+
+            // Sleep latency
+            val sleepLatencyPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", sleepRecord.endTime)
+                put("metric_name", "sleep_latency_minutes")
+                put("value_numeric", sleepRecord.sleepLatencyMinutes)
+                put("unit", "minutes")
+            }
+            postgrest["data_points"].insert(sleepLatencyPoint)
+
+            // Awakenings count
+            val awakeningsCountPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", sleepRecord.endTime)
+                put("metric_name", "awakenings_count")
+                put("value_numeric", sleepRecord.awakeningsCount.toDouble())
+                put("unit", "count")
+            }
+            postgrest["data_points"].insert(awakeningsCountPoint)
+
+            // Time in bed
+            val timeInBedPoint = buildJsonObject {
+                put("user_id", userId)
+                put("metric_source_id", metricSourceId)
+                put("timestamp", sleepRecord.endTime)
+                put("metric_name", "time_in_bed_minutes")
+                put("value_numeric", sleepRecord.timeInBedMinutes)
+                put("unit", "minutes")
+            }
+            postgrest["data_points"].insert(timeInBedPoint)
+        }
+
         // Upload heart rate data
         pihsHealthData.heartRate.forEach { hrRecord ->
             hrRecord.samples.forEach { sample ->
