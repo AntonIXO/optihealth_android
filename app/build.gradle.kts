@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.1.21"
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
@@ -42,6 +42,11 @@ android {
         buildConfig = true
     }
     buildToolsVersion = "36.0.0"
+    packaging {
+        resources {
+            excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+        }
+    }
 }
 
 dependencies {
@@ -54,6 +59,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.identity.jvm)
 
     // Supabase - using the correct package names
     val supabaseVersion = "3.1.4" // Consolidate version
@@ -62,6 +68,11 @@ dependencies {
     implementation("io.github.jan-tennert.supabase:auth-kt")
     implementation("io.github.jan-tennert.supabase:realtime-kt")
 
+    // Credential Manager for Google Sign-In
+    implementation(libs.androidx.credentials)
+    implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+
     // Ktor
     val ktorVersion = "3.1.1" // Updated Ktor version
     implementation("io.ktor:ktor-client-core:$ktorVersion")
@@ -69,10 +80,15 @@ dependencies {
     implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion") // For content negotiation
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion") // For JSON serialization with Ktor
 
+    // Health Connect
+    implementation("androidx.health.connect:connect-client:1.1.0-rc01")
+
     // Hilt for Dependency Injection
     implementation("com.google.dagger:hilt-android:2.56.2") // Check for latest Hilt version
     ksp("com.google.dagger:hilt-android-compiler:2.56.2")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0") // Check for latest version
+
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 
 
     testImplementation(libs.junit)
