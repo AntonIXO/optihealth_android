@@ -1,6 +1,7 @@
 package org.devpins.pihs
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -13,7 +14,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -82,6 +82,8 @@ import kotlinx.coroutines.launch
 import org.devpins.pihs.health.HealthConnectAvailability
 import org.devpins.pihs.health.HealthRepository
 import org.devpins.pihs.health.SyncStatus
+import org.devpins.pihs.location.LocationManager
+import org.devpins.pihs.location.LocationTrackingCard
 import org.devpins.pihs.ui.theme.PIHSTheme
 import java.security.MessageDigest
 import java.time.Instant
@@ -99,6 +101,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var healthRepository: HealthRepository
+
+    @Inject
+    lateinit var locationManager: LocationManager
 
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
 
@@ -133,8 +138,13 @@ class MainActivity : ComponentActivity() {
             val sessionStatus by supabaseClient.auth.sessionStatus.collectAsState()
             val isLoggedIn = sessionStatus is SessionStatus.Authenticated
 
-            // Permission launcher
-            val permissionLauncher = rememberLauncherForActivityResult(
+            // State for location tracking
+            var hasLocationPermissions by remember { mutableStateOf(locationManager.hasRequiredPermissions()) }
+            var hasBackgroundLocationPermission by remember { mutableStateOf(locationManager.hasBackgroundLocationPermission()) }
+            var isLocationTrackingActive by remember { mutableStateOf(false) }
+
+            // Health Connect Permission launcher
+            val healthPermissionLauncher = rememberLauncherForActivityResult(
                 contract = healthRepository.getPermissionRequestContract(),
                 onResult = { permissions ->
                     Log.d("HealthConnect", "MainActivity: Permission result received: $permissions")
@@ -143,6 +153,26 @@ class MainActivity : ComponentActivity() {
                         healthRepository.handlePermissionResult(permissions)
                         Log.d("HealthConnect", "MainActivity: Permission result handled")
                     }
+                }
+            )
+
+            // Simple location permission launcher
+            val locationPermissionsLauncher = rememberLauncherForActivityResult(
+                contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
+                onResult = { 
+                    // Update permission states
+                    hasLocationPermissions = locationManager.hasRequiredPermissions()
+                    hasBackgroundLocationPermission = locationManager.hasBackgroundLocationPermission()
+                }
+            )
+
+            // App settings launcher
+            val appSettingsLauncher = rememberLauncherForActivityResult(
+                contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+                onResult = {
+                    // Check permissions again after returning from settings
+                    hasLocationPermissions = locationManager.hasRequiredPermissions()
+                    hasBackgroundLocationPermission = locationManager.hasBackgroundLocationPermission()
                 }
             )
 
@@ -158,7 +188,7 @@ class MainActivity : ComponentActivity() {
                             Log.d("HealthConnect", "MainActivity: Request permissions button clicked")
                             val permissions = healthRepository.getPermissionsToRequest()
                             Log.d("HealthConnect", "MainActivity: Launching permission request for: $permissions")
-                            permissionLauncher.launch(permissions)
+                            healthPermissionLauncher.launch(permissions)
                         },
                         onOpenHealthConnect = {
                             Log.d("HealthConnect", "MainActivity: Open Health Connect button clicked")
@@ -187,7 +217,29 @@ class MainActivity : ComponentActivity() {
                             healthRepository.cancelSync()
                         },
                         isLoggedIn = isLoggedIn,
-                        supabaseClient = supabaseClient // Pass supabaseClient here
+                        supabaseClient = supabaseClient,
+                        // Location tracking parameters
+                        hasLocationPermissions = hasLocationPermissions,
+                        hasBackgroundLocationPermission = hasBackgroundLocationPermission,
+                        isLocationTrackingActive = isLocationTrackingActive,
+                        onRequestLocationPermissions = {
+                            Log.d("LocationTracking", "MainActivity: Request location permissions button clicked")
+                            locationPermissionsLauncher.launch(LocationManager.REQUIRED_PERMISSIONS)
+                        },
+                        onStartLocationTracking = {
+                            Log.d("LocationTracking", "MainActivity: Start location tracking button clicked")
+                            locationManager.startLocationTracking()
+                            isLocationTrackingActive = true
+                        },
+                        onStopLocationTracking = {
+                            Log.d("LocationTracking", "MainActivity: Stop location tracking button clicked")
+                            locationManager.stopLocationTracking()
+                            isLocationTrackingActive = false
+                        },
+                        onOpenAppSettings = {
+                            Log.d("LocationTracking", "MainActivity: Open app settings button clicked")
+                            appSettingsLauncher.launch(locationManager.getAppSettingsIntent())
+                        }
                     )
                 }
             }
@@ -214,7 +266,15 @@ fun MainScreen(
     onSyncDataInRange: (Instant, Instant) -> Unit,
     onCancelSync: () -> Unit,
     isLoggedIn: Boolean = false,
-    supabaseClient: SupabaseClient
+    supabaseClient: SupabaseClient,
+    // Location tracking parameters
+    hasLocationPermissions: Boolean = false,
+    hasBackgroundLocationPermission: Boolean = false,
+    isLocationTrackingActive: Boolean = false,
+    onRequestLocationPermissions: () -> Unit = {},
+    onStartLocationTracking: () -> Unit = {},
+    onStopLocationTracking: () -> Unit = {},
+    onOpenAppSettings: () -> Unit = {}
 ) {
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -261,6 +321,19 @@ fun MainScreen(
                 onSyncData = onSyncData,
                 onSyncDataInRange = onSyncDataInRange,
                 onCancelSync = onCancelSync
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Location Tracking Section
+            LocationTrackingCard(
+                hasRequiredPermissions = hasLocationPermissions,
+                hasBackgroundPermission = hasBackgroundLocationPermission,
+                isTrackingActive = isLocationTrackingActive,
+                onRequestPermissions = onRequestLocationPermissions,
+                onStartTracking = onStartLocationTracking,
+                onStopTracking = onStopLocationTracking,
+                onOpenAppSettings = onOpenAppSettings
             )
         }
     }
@@ -577,7 +650,7 @@ fun HealthConnectCard(
                 if (syncStatus is SyncStatus.Error) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Error: ${(syncStatus as SyncStatus.Error).message}",
+                        text = "Error: ${syncStatus.message}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -622,12 +695,13 @@ fun HealthConnectCard(
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = try {
-                                    val instant = java.time.Instant.parse(lastSyncTime)
-                                    val formatter = java.time.format.DateTimeFormatter
+                                    val instant = Instant.parse(lastSyncTime)
+                                    val formatter = DateTimeFormatter
                                         .ofPattern("MMM dd, yyyy HH:mm")
                                         .withZone(java.time.ZoneId.systemDefault())
                                     formatter.format(instant)
                                 } catch (e: Exception) {
+                                    Log.d("error", e.toString())
                                     lastSyncTime // Fallback to raw timestamp if parsing fails
                                 },
                                 style = MaterialTheme.typography.bodyLarge,

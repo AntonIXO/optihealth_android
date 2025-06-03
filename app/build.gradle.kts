@@ -90,6 +90,9 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 
+    // Google Play Services Location for Fused Location Provider
+    implementation("com.google.android.gms:play-services-location:21.2.0")
+
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
