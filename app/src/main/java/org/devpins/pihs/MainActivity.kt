@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
@@ -84,6 +85,7 @@ import org.devpins.pihs.health.HealthRepository
 import org.devpins.pihs.health.SyncStatus
 import org.devpins.pihs.location.LocationManager
 import org.devpins.pihs.location.LocationTrackingCard
+import org.devpins.pihs.stats.UsageStatsHelper // Import UsageStatsHelper
 import org.devpins.pihs.ui.theme.PIHSTheme
 import java.security.MessageDigest
 import java.time.Instant
@@ -107,70 +109,51 @@ class MainActivity : ComponentActivity() {
 
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
 
-    // Simple flag to track login stat
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         Log.d("HealthConnect", "MainActivity: onCreate")
-
-        // Initialize Health Repository
         coroutineScope.launch {
             Log.d("HealthConnect", "MainActivity: Initializing health repository")
             healthRepository.initialize()
             Log.d("HealthConnect", "MainActivity: Health repository initialized")
         }
-
-        // Try to check login status
-
-
         enableEdgeToEdge()
         setContent {
             val scope = rememberCoroutineScope()
+            val context = LocalContext.current
 
-            // Health Connect states
             val healthConnectAvailability by healthRepository.healthConnectAvailability.collectAsState()
             val permissionsGranted by healthRepository.permissionsGranted.collectAsState()
             val syncStatus by healthRepository.syncStatus.collectAsState()
             val lastSyncTime by healthRepository.lastSyncTime.collectAsState()
 
-            // Authentication state
             val sessionStatus by supabaseClient.auth.sessionStatus.collectAsState()
             val isLoggedIn = sessionStatus is SessionStatus.Authenticated
 
-            // State for location tracking
             var hasLocationPermissions by remember { mutableStateOf(locationManager.hasRequiredPermissions()) }
             var hasBackgroundLocationPermission by remember { mutableStateOf(locationManager.hasBackgroundLocationPermission()) }
             var isLocationTrackingActive by remember { mutableStateOf(false) }
 
-            // Health Connect Permission launcher
             val healthPermissionLauncher = rememberLauncherForActivityResult(
                 contract = healthRepository.getPermissionRequestContract(),
                 onResult = { permissions ->
-                    Log.d("HealthConnect", "MainActivity: Permission result received: $permissions")
                     scope.launch {
-                        Log.d("HealthConnect", "MainActivity: Handling permission result")
                         healthRepository.handlePermissionResult(permissions)
-                        Log.d("HealthConnect", "MainActivity: Permission result handled")
                     }
                 }
             )
 
-            // Simple location permission launcher
             val locationPermissionsLauncher = rememberLauncherForActivityResult(
                 contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
                 onResult = { 
-                    // Update permission states
                     hasLocationPermissions = locationManager.hasRequiredPermissions()
                     hasBackgroundLocationPermission = locationManager.hasBackgroundLocationPermission()
                 }
             )
 
-            // App settings launcher
             val appSettingsLauncher = rememberLauncherForActivityResult(
                 contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
                 onResult = {
-                    // Check permissions again after returning from settings
                     hasLocationPermissions = locationManager.hasRequiredPermissions()
                     hasBackgroundLocationPermission = locationManager.hasBackgroundLocationPermission()
                 }
@@ -185,60 +168,47 @@ class MainActivity : ComponentActivity() {
                         syncStatus = syncStatus,
                         lastSyncTime = lastSyncTime,
                         onRequestPermissions = {
-                            Log.d("HealthConnect", "MainActivity: Request permissions button clicked")
                             val permissions = healthRepository.getPermissionsToRequest()
-                            Log.d("HealthConnect", "MainActivity: Launching permission request for: $permissions")
                             healthPermissionLauncher.launch(permissions)
                         },
                         onOpenHealthConnect = {
-                            Log.d("HealthConnect", "MainActivity: Open Health Connect button clicked")
                             val intent = healthRepository.getHealthConnectSettingsIntent()
-                            Log.d("HealthConnect", "MainActivity: Starting Health Connect settings activity with intent: $intent")
                             startActivity(intent)
                         },
                         onSyncData = {
-                            Log.d("HealthConnect", "MainActivity: Sync data button clicked")
                             scope.launch {
-                                Log.d("HealthConnect", "MainActivity: Starting health data sync")
                                 healthRepository.syncHealthData()
-                                Log.d("HealthConnect", "MainActivity: Health data sync completed")
                             }
                         },
                         onSyncDataInRange = { startTime, endTime ->
-                            Log.d("HealthConnect", "MainActivity: Sync data in range button clicked: $startTime to $endTime")
                             scope.launch {
-                                Log.d("HealthConnect", "MainActivity: Starting health data sync in range")
                                 healthRepository.syncHealthDataInRange(startTime, endTime)
-                                Log.d("HealthConnect", "MainActivity: Health data sync in range completed")
                             }
                         },
                         onCancelSync = {
-                            Log.d("HealthConnect", "MainActivity: Cancel sync button clicked")
                             healthRepository.cancelSync()
                         },
                         isLoggedIn = isLoggedIn,
                         supabaseClient = supabaseClient,
-                        // Location tracking parameters
                         hasLocationPermissions = hasLocationPermissions,
                         hasBackgroundLocationPermission = hasBackgroundLocationPermission,
                         isLocationTrackingActive = isLocationTrackingActive,
                         onRequestLocationPermissions = {
-                            Log.d("LocationTracking", "MainActivity: Request location permissions button clicked")
                             locationPermissionsLauncher.launch(LocationManager.REQUIRED_PERMISSIONS)
                         },
                         onStartLocationTracking = {
-                            Log.d("LocationTracking", "MainActivity: Start location tracking button clicked")
                             locationManager.startLocationTracking()
                             isLocationTrackingActive = true
                         },
                         onStopLocationTracking = {
-                            Log.d("LocationTracking", "MainActivity: Stop location tracking button clicked")
                             locationManager.stopLocationTracking()
                             isLocationTrackingActive = false
                         },
                         onOpenAppSettings = {
-                            Log.d("LocationTracking", "MainActivity: Open app settings button clicked")
                             appSettingsLauncher.launch(locationManager.getAppSettingsIntent())
+                        },
+                        onSyncUsageData = {
+                            // Actual sync logic in UsageStatsCard for better state management there
                         }
                     )
                 }
@@ -249,7 +219,6 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         // Note: Deeplink handling will be implemented according to the Supabase documentation
-        // This is a placeholder for now
     }
 }
 
@@ -267,14 +236,14 @@ fun MainScreen(
     onCancelSync: () -> Unit,
     isLoggedIn: Boolean = false,
     supabaseClient: SupabaseClient,
-    // Location tracking parameters
     hasLocationPermissions: Boolean = false,
     hasBackgroundLocationPermission: Boolean = false,
     isLocationTrackingActive: Boolean = false,
     onRequestLocationPermissions: () -> Unit = {},
     onStartLocationTracking: () -> Unit = {},
     onStopLocationTracking: () -> Unit = {},
-    onOpenAppSettings: () -> Unit = {}
+    onOpenAppSettings: () -> Unit = {},
+    onSyncUsageData: () -> Unit // Added for future direct calls if needed, but logic is in UsageStatsCard
 ) {
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -288,7 +257,6 @@ fun MainScreen(
             verticalArrangement = Arrangement.Top,
             horizontalAlignment = Alignment.Start
         ) {
-            // App Header
             Text(
                 text = "PIHS",
                 style = MaterialTheme.typography.displaySmall,
@@ -299,18 +267,12 @@ fun MainScreen(
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-
             Spacer(modifier = Modifier.height(24.dp))
-
-            // Authentication Section
             AuthenticationCard(
                 isLoggedIn = isLoggedIn,
                 supabaseClient = supabaseClient
             )
-
             Spacer(modifier = Modifier.height(16.dp))
-
-            // Health Connect Section
             HealthConnectCard(
                 healthConnectAvailability = healthConnectAvailability,
                 permissionsGranted = permissionsGranted,
@@ -322,10 +284,7 @@ fun MainScreen(
                 onSyncDataInRange = onSyncDataInRange,
                 onCancelSync = onCancelSync
             )
-
             Spacer(modifier = Modifier.height(16.dp))
-
-            // Location Tracking Section
             LocationTrackingCard(
                 hasRequiredPermissions = hasLocationPermissions,
                 hasBackgroundPermission = hasBackgroundLocationPermission,
@@ -335,9 +294,105 @@ fun MainScreen(
                 onStopTracking = onStopLocationTracking,
                 onOpenAppSettings = onOpenAppSettings
             )
+            Spacer(modifier = Modifier.height(16.dp)) // Added Spacer
+            UsageStatsCard(supabaseClient = supabaseClient) // Added UsageStatsCard
         }
     }
 }
+
+@Composable
+fun UsageStatsCard(supabaseClient: SupabaseClient) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isLoading by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessLow
+                )
+            ),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.DateRange, // Using Smartphone icon
+                    contentDescription = "App Usage Stats",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "App Usage Tracking",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+            } else {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            isLoading = true
+                            val hasPermission = UsageStatsHelper.hasUsageStatsPermission(context)
+                            if (!hasPermission) {
+                                Toast.makeText(context, "Usage access permission required. Redirecting to settings...", Toast.LENGTH_LONG).show()
+                                UsageStatsHelper.requestUsageStatsPermission(context)
+                                isLoading = false
+                                return@launch
+                            }
+
+                            val currentUser = supabaseClient.auth.currentUserOrNull()
+                            if (currentUser == null) {
+                                Toast.makeText(context, "Please log in to sync usage data.", Toast.LENGTH_LONG).show()
+                                isLoading = false
+                                return@launch
+                            }
+                            // IMPORTANT: Replace with your actual Metric Source ID from Supabase
+                            val metricSourceId = "YOUR_APP_USAGE_METRIC_SOURCE_ID" 
+
+                            try {
+                                val dataPoints = UsageStatsHelper.getAndProcessUsageStats(
+                                    context = context,
+                                    date = LocalDate.now(), // Syncs for the current day
+                                    userId = currentUser.id,
+                                    metricSourceId = metricSourceId
+                                )
+                                if (dataPoints.isNotEmpty()) {
+                                    UsageStatsHelper.logDataToSupabase(dataPoints, supabaseClient)
+                                    Toast.makeText(context, "App usage data synced successfully!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "No new app usage data to sync or permission issue.", Toast.LENGTH_LONG).show()
+                                }
+                            } catch (e: Exception) {
+                                Log.e("UsageStatsSync", "Error syncing usage data", e)
+                                Toast.makeText(context, "Error syncing app usage data: ${e.message}", Toast.LENGTH_LONG).show()
+                            }
+                            isLoading = false
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Sync App Usage Data for Today")
+                }
+            }
+        }
+    }
+}
+
 
 @Composable
 fun AuthenticationCard(
@@ -358,7 +413,6 @@ fun AuthenticationCard(
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
-            // Card Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -376,10 +430,7 @@ fun AuthenticationCard(
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
-
             Spacer(modifier = Modifier.height(16.dp))
-
-            // Login Status
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
@@ -405,10 +456,7 @@ fun AuthenticationCard(
                     )
                 }
             }
-
             Spacer(modifier = Modifier.height(16.dp))
-
-            // Sign-in Buttons
             if (!isLoggedIn) {
                 GoogleSignInButtonStyled(supabaseClient = supabaseClient)
             } else {
@@ -445,7 +493,6 @@ fun HealthConnectCard(
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
-            // Card Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -463,10 +510,7 @@ fun HealthConnectCard(
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
-
             Spacer(modifier = Modifier.height(16.dp))
-
-            // Health Connect Status
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
@@ -508,11 +552,8 @@ fun HealthConnectCard(
                     )
                 }
             }
-
             Spacer(modifier = Modifier.height(16.dp))
-
             if (healthConnectAvailability == HealthConnectAvailability.INSTALLED) {
-                // Permissions Status
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp),
@@ -538,10 +579,7 @@ fun HealthConnectCard(
                         )
                     }
                 }
-
                 Spacer(modifier = Modifier.height(16.dp))
-
-                // Health Connect Actions
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -560,7 +598,6 @@ fun HealthConnectCard(
                         Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
                         Text(text = "Request Permissions")
                     }
-
                     FilledTonalButton(
                         onClick = onOpenHealthConnect,
                         modifier = Modifier.weight(1f),
@@ -575,10 +612,7 @@ fun HealthConnectCard(
                         Text(text = "Open Health Connect")
                     }
                 }
-
                 Spacer(modifier = Modifier.height(16.dp))
-
-                // Sync Status
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp),
@@ -646,7 +680,6 @@ fun HealthConnectCard(
                         }
                     }
                 }
-
                 if (syncStatus is SyncStatus.Error) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
@@ -655,8 +688,6 @@ fun HealthConnectCard(
                         color = MaterialTheme.colorScheme.error
                     )
                 }
-
-                // Cancel Sync Button (only visible when syncing)
                 if (syncStatus is SyncStatus.Syncing) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Button(
@@ -671,10 +702,7 @@ fun HealthConnectCard(
                         Text(text = "Cancel Sync")
                     }
                 }
-
                 Spacer(modifier = Modifier.height(16.dp))
-
-                // Last Sync Time
                 if (lastSyncTime != null) {
                     ElevatedCard(
                         modifier = Modifier.fillMaxWidth(),
@@ -702,23 +730,19 @@ fun HealthConnectCard(
                                     formatter.format(instant)
                                 } catch (e: Exception) {
                                     Log.d("error", e.toString())
-                                    lastSyncTime // Fallback to raw timestamp if parsing fails
+                                    lastSyncTime
                                 },
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
                         }
                     }
-
                     Spacer(modifier = Modifier.height(16.dp))
                 }
-
-                // Date Range Selection
                 var startDate by remember { mutableStateOf<LocalDate?>(null) }
                 var endDate by remember { mutableStateOf<LocalDate?>(null) }
                 var showStartDatePicker by remember { mutableStateOf(false) }
                 var showEndDatePicker by remember { mutableStateOf(false) }
-
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp),
@@ -735,9 +759,7 @@ fun HealthConnectCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Bold
                         )
-
                         Spacer(modifier = Modifier.height(8.dp))
-
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -759,9 +781,7 @@ fun HealthConnectCard(
                                     enabled = false
                                 )
                             }
-
                             Spacer(modifier = Modifier.width(8.dp))
-
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = "To",
@@ -779,9 +799,7 @@ fun HealthConnectCard(
                                 )
                             }
                         }
-
                         Spacer(modifier = Modifier.height(8.dp))
-
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.End
@@ -795,7 +813,6 @@ fun HealthConnectCard(
                             ) {
                                 Text("Clear")
                             }
-
                             TextButton(
                                 onClick = { showStartDatePicker = true }
                             ) {
@@ -804,12 +821,10 @@ fun HealthConnectCard(
                         }
                     }
                 }
-
                 if (showStartDatePicker) {
                     val startDatePickerState = rememberDatePickerState(
                         initialSelectedDateMillis = startDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
                     )
-
                     DatePickerDialog(
                         onDismissRequest = { showStartDatePicker = false },
                         confirmButton = {
@@ -818,7 +833,6 @@ fun HealthConnectCard(
                                     startDatePickerState.selectedDateMillis?.let { millis ->
                                         startDate = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()
                                         showStartDatePicker = false
-                                        // Optionally show end date picker after selecting start date
                                         showEndDatePicker = true
                                     }
                                 }
@@ -837,13 +851,11 @@ fun HealthConnectCard(
                         DatePicker(state = startDatePickerState)
                     }
                 }
-
                 if (showEndDatePicker) {
                     val endDatePickerState = rememberDatePickerState(
                         initialSelectedDateMillis = endDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
                             ?: LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
                     )
-
                     DatePickerDialog(
                         onDismissRequest = { showEndDatePicker = false },
                         confirmButton = {
@@ -869,10 +881,7 @@ fun HealthConnectCard(
                         DatePicker(state = endDatePickerState)
                     }
                 }
-
                 Spacer(modifier = Modifier.height(16.dp))
-
-                // Regular Sync Button
                 Button(
                     onClick = onSyncData,
                     enabled = permissionsGranted && syncStatus !is SyncStatus.Syncing,
@@ -887,10 +896,7 @@ fun HealthConnectCard(
                     Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
                     Text(text = "Sync All Health Data")
                 }
-
                 Spacer(modifier = Modifier.height(8.dp))
-
-                // Date Range Sync Button
                 Button(
                     onClick = {
                         if (startDate != null && endDate != null) {
@@ -933,32 +939,26 @@ fun HealthConnectCard(
     }
 }
 
-// Styled versions of the Google sign-in buttons
 @Composable
 fun GoogleSignInButtonStyled(supabaseClient: SupabaseClient) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-
     val onClick: () -> Unit = {
         val credentialManager = CredentialManager.create(context)
-
         val rawNonce = UUID.randomUUID().toString()
         val bytes = rawNonce.toByteArray()
         val md = MessageDigest.getInstance("SHA-256")
         val digest = md.digest(bytes)
         val hashedNonce = digest.fold("") { str, it -> str + "%02x".format(it)}
-
         val googleIdOption: GetGoogleIdOption = GetGoogleIdOption.Builder()
             .setFilterByAuthorizedAccounts(true)
             .setFilterByAuthorizedAccounts(false)
             .setServerClientId("421259338685-acb3ddfpdkgc055ejpil1bj5oltes1tu.apps.googleusercontent.com")
             .setNonce(hashedNonce)
             .build()
-
         val request: GetCredentialRequest = GetCredentialRequest.Builder()
             .addCredentialOption(googleIdOption)
             .build()
-
         coroutineScope.launch {
             try {
                 val result = credentialManager.getCredential(
@@ -966,18 +966,14 @@ fun GoogleSignInButtonStyled(supabaseClient: SupabaseClient) {
                     context = context,
                 )
                 val credential = result.credential
-
                 val googleIdTokenCredential = GoogleIdTokenCredential
                     .createFrom(credential.data)
-
                 val googleIdToken = googleIdTokenCredential.idToken
-
                 supabaseClient.auth.signInWith(IDToken) {
                     idToken = googleIdToken
                     provider = Google
                     nonce = rawNonce
                 }
-
                 Log.i("test", googleIdToken)
                 Toast.makeText(context, "You are signed in!", Toast.LENGTH_SHORT).show()
             } catch (e: androidx.credentials.exceptions.GetCredentialException) {
@@ -987,7 +983,6 @@ fun GoogleSignInButtonStyled(supabaseClient: SupabaseClient) {
             }
         }
     }
-
     Button(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -1023,7 +1018,6 @@ fun GoogleSignOutButtonStyled(supabaseClient: SupabaseClient) {
             supabaseClient.auth.signOut(SignOutScope.LOCAL)
         }
     }
-
     OutlinedButton(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),

@@ -117,7 +117,7 @@ fun LocationTrackingCard(
             } else {
                 // All permissions granted, show tracking controls
                 Text(
-                    text = "PIHS will track significant location changes (>0.5km) where you remain stable for at least 5 minutes.",
+                    text = "PIHS will track significant location changes (>0.5km) where you remain stable for at least 15 minutes.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )

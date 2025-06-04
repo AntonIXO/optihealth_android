@@ -88,10 +88,17 @@ dependencies {
     ksp("com.google.dagger:hilt-android-compiler:2.56.2")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0") // Check for latest version
 
+    // Hilt AndroidX Integration (for WorkManager, ViewModel, etc.)
+    implementation(libs.androidx.hilt.work) // Use the latest version
+    ksp(libs.androidx.hilt.compiler) // Use the latest version
+
+    // WorkManager
+    implementation("androidx.work:work-runtime-ktx:2.10.1") // Use the latest version
+
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 
     // Google Play Services Location for Fused Location Provider
-    implementation("com.google.android.gms:play-services-location:21.2.0")
+    implementation("com.google.android.gms:play-services-location:21.3.0")
 
 
     testImplementation(libs.junit)

@@ -45,11 +45,11 @@ class LocationTrackingService : Service() {
         // Location tracking parameters
         private const val SIGNIFICANT_DISTANCE_METERS = 500.0 // 0.5 km
         private const val STABILITY_RADIUS_METERS = 150.0 // 150 meters
-        private const val STABILITY_TIME_MS = 5 * 60 * 1000L // 5 minutes
+        private const val STABILITY_TIME_MS = 20 * 60 * 1000L // 20 minutes
         
         // Location request parameters
-        private const val LOCATION_UPDATE_INTERVAL_MS = 60 * 1000L // 1 minute
-        private const val FASTEST_LOCATION_INTERVAL_MS = 30 * 1000L // 30 seconds
+        private const val LOCATION_UPDATE_INTERVAL_MS = 10 * 60 * 1000L // 10 minutes
+        private const val FASTEST_LOCATION_INTERVAL_MS = 60 * 1000L // 60 seconds
         
         // Intent actions
         const val ACTION_START_LOCATION_TRACKING = "org.devpins.pihs.ACTION_START_LOCATION_TRACKING"
