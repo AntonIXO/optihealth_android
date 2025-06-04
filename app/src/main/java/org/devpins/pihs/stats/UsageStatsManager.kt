@@ -38,7 +38,8 @@ object UsageStatsHelper {
         "org.telegram.messenger",
         "com.android.chrome",
         "com.instagram.android",
-        "com.facebook.katana"
+        "com.facebook.katana",
+        "com.brave.browser"
         // Add more as needed
     )
 
