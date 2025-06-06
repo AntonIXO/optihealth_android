@@ -95,6 +95,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
+private const val PREF_KEY_TRACKING_ACTIVE = "is_tracking_active"
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -113,7 +114,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var requiredLocationPermissionLauncher: ActivityResultLauncher<Array<String>>
     private lateinit var backgroundLocationPermissionLauncher: ActivityResultLauncher<String>
 
-    private const val PREF_KEY_TRACKING_ACTIVE = "is_tracking_active"
     private val sharedPreferences by lazy {
         getSharedPreferences("LocationTrackingPrefs", Context.MODE_PRIVATE)
     }
@@ -202,6 +202,7 @@ class MainActivity : ComponentActivity() {
                     Toast.makeText(context, "Battery optimization settings not available on this Android version.", Toast.LENGTH_LONG).show()
                     Log.w("MainActivity", "Battery optimization intent is null.")
                 }
+                Unit // Explicitly return Unit
             }
 
             PIHSTheme {
