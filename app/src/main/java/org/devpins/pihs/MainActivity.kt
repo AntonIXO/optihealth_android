@@ -1,14 +1,15 @@
 package org.devpins.pihs
 
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.ActivityResultLauncher
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -109,6 +110,14 @@ class MainActivity : ComponentActivity() {
 
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
 
+    private lateinit var requiredLocationPermissionLauncher: ActivityResultLauncher<Array<String>>
+    private lateinit var backgroundLocationPermissionLauncher: ActivityResultLauncher<String>
+
+    private const val PREF_KEY_TRACKING_ACTIVE = "is_tracking_active"
+    private val sharedPreferences by lazy {
+        getSharedPreferences("LocationTrackingPrefs", Context.MODE_PRIVATE)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.d("HealthConnect", "MainActivity: onCreate")
@@ -118,6 +127,26 @@ class MainActivity : ComponentActivity() {
             Log.d("HealthConnect", "MainActivity: Health repository initialized")
         }
         enableEdgeToEdge()
+
+        var hasLocationPermissions by mutableStateOf(locationManager.hasRequiredPermissions())
+        var hasBackgroundLocationPermission by mutableStateOf(locationManager.hasBackgroundLocationPermission())
+
+        val (requiredLauncher, backgroundLauncher) = locationManager.registerPermissionLaunchers(
+            activity = this,
+            onRequiredPermissionsResult = { allGranted ->
+                Log.d("PermissionRequest", "Required permissions granted: $allGranted")
+                hasLocationPermissions = allGranted
+                // Check background permission status again, as granting fine/coarse might affect it
+                hasBackgroundLocationPermission = locationManager.hasBackgroundLocationPermission()
+            },
+            onBackgroundPermissionResult = { granted ->
+                Log.d("PermissionRequest", "Background permission granted: $granted")
+                hasBackgroundLocationPermission = granted
+            }
+        )
+        requiredLocationPermissionLauncher = requiredLauncher
+        backgroundLocationPermissionLauncher = backgroundLauncher
+
         setContent {
             val scope = rememberCoroutineScope()
             val context = LocalContext.current
@@ -130,11 +159,15 @@ class MainActivity : ComponentActivity() {
             val sessionStatus by supabaseClient.auth.sessionStatus.collectAsState()
             val isLoggedIn = sessionStatus is SessionStatus.Authenticated
 
-            var hasLocationPermissions by remember { mutableStateOf(locationManager.hasRequiredPermissions()) }
-            var hasBackgroundLocationPermission by remember { mutableStateOf(locationManager.hasBackgroundLocationPermission()) }
-            var isLocationTrackingActive by remember { mutableStateOf(false) }
+            // The state variables are already declared above setContent
+            // var hasLocationPermissions by remember { mutableStateOf(locationManager.hasRequiredPermissions()) }
+            // var hasBackgroundLocationPermission by remember { mutableStateOf(locationManager.hasBackgroundLocationPermission()) }
+            var isLocationTrackingActive by remember {
+                mutableStateOf(sharedPreferences.getBoolean(PREF_KEY_TRACKING_ACTIVE, false))
+            }
+            var isIgnoringBatteryOptimizations by remember { mutableStateOf(locationManager.isIgnoringBatteryOptimizations()) }
 
-            val healthPermissionLauncher = rememberLauncherForActivityResult(
+            val healthPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
                 contract = healthRepository.getPermissionRequestContract(),
                 onResult = { permissions ->
                     scope.launch {
@@ -143,21 +176,33 @@ class MainActivity : ComponentActivity() {
                 }
             )
 
-            val locationPermissionsLauncher = rememberLauncherForActivityResult(
-                contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
-                onResult = { 
-                    hasLocationPermissions = locationManager.hasRequiredPermissions()
-                    hasBackgroundLocationPermission = locationManager.hasBackgroundLocationPermission()
-                }
-            )
-
-            val appSettingsLauncher = rememberLauncherForActivityResult(
+            val appSettingsLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
                 contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
                 onResult = {
                     hasLocationPermissions = locationManager.hasRequiredPermissions()
                     hasBackgroundLocationPermission = locationManager.hasBackgroundLocationPermission()
+                    isIgnoringBatteryOptimizations = locationManager.isIgnoringBatteryOptimizations()
                 }
             )
+
+            val batteryOptimizationLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+                onResult = {
+                    // Refresh the state after returning from the settings screen
+                    isIgnoringBatteryOptimizations = locationManager.isIgnoringBatteryOptimizations()
+                    Log.d("MainActivity", "Returned from battery optimization settings. Is ignoring: $isIgnoringBatteryOptimizations")
+                }
+            )
+
+            val onRequestIgnoreBatteryOptimizations = {
+                val intent = locationManager.getRequestIgnoreBatteryOptimizationsIntent()
+                if (intent != null) {
+                    batteryOptimizationLauncher.launch(intent)
+                } else {
+                    Toast.makeText(context, "Battery optimization settings not available on this Android version.", Toast.LENGTH_LONG).show()
+                    Log.w("MainActivity", "Battery optimization intent is null.")
+                }
+            }
 
             PIHSTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -193,16 +238,36 @@ class MainActivity : ComponentActivity() {
                         hasLocationPermissions = hasLocationPermissions,
                         hasBackgroundLocationPermission = hasBackgroundLocationPermission,
                         isLocationTrackingActive = isLocationTrackingActive,
+                        isIgnoringBatteryOptimizations = isIgnoringBatteryOptimizations,
                         onRequestLocationPermissions = {
-                            locationPermissionsLauncher.launch(LocationManager.REQUIRED_PERMISSIONS)
+                            if (!hasLocationPermissions) {
+                                Log.d("PermissionRequest", "Requesting required foreground permissions.")
+                                locationManager.requestRequiredPermissions(requiredLocationPermissionLauncher)
+                            } else if (!hasBackgroundLocationPermission) {
+                                Log.d("PermissionRequest", "Requesting background location permission.")
+                                locationManager.requestBackgroundLocationPermission(backgroundLocationPermissionLauncher)
+                            } else {
+                                Toast.makeText(context, "All location permissions already granted.", Toast.LENGTH_SHORT).show()
+                            }
                         },
+                        onRequestIgnoreBatteryOptimizations = onRequestIgnoreBatteryOptimizations,
                         onStartLocationTracking = {
                             locationManager.startLocationTracking()
                             isLocationTrackingActive = true
+                            with(sharedPreferences.edit()) {
+                                putBoolean(PREF_KEY_TRACKING_ACTIVE, true)
+                                apply()
+                            }
+                            Log.d("MainActivity", "Location tracking started and state saved.")
                         },
                         onStopLocationTracking = {
                             locationManager.stopLocationTracking()
                             isLocationTrackingActive = false
+                            with(sharedPreferences.edit()) {
+                                putBoolean(PREF_KEY_TRACKING_ACTIVE, false)
+                                apply()
+                            }
+                            Log.d("MainActivity", "Location tracking stopped and state saved.")
                         },
                         onOpenAppSettings = {
                             appSettingsLauncher.launch(locationManager.getAppSettingsIntent())
@@ -239,7 +304,9 @@ fun MainScreen(
     hasLocationPermissions: Boolean = false,
     hasBackgroundLocationPermission: Boolean = false,
     isLocationTrackingActive: Boolean = false,
+    isIgnoringBatteryOptimizations: Boolean = false,
     onRequestLocationPermissions: () -> Unit = {},
+    onRequestIgnoreBatteryOptimizations: () -> Unit = {},
     onStartLocationTracking: () -> Unit = {},
     onStopLocationTracking: () -> Unit = {},
     onOpenAppSettings: () -> Unit = {},
@@ -289,7 +356,9 @@ fun MainScreen(
                 hasRequiredPermissions = hasLocationPermissions,
                 hasBackgroundPermission = hasBackgroundLocationPermission,
                 isTrackingActive = isLocationTrackingActive,
+                isIgnoringBatteryOptimizations = isIgnoringBatteryOptimizations,
                 onRequestPermissions = onRequestLocationPermissions,
+                onRequestIgnoreBatteryOptimizations = onRequestIgnoreBatteryOptimizations,
                 onStartTracking = onStartLocationTracking,
                 onStopTracking = onStopLocationTracking,
                 onOpenAppSettings = onOpenAppSettings
