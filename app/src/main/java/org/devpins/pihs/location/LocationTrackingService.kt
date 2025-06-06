@@ -45,10 +45,10 @@ class LocationTrackingService : Service() {
         // Location tracking parameters
         private const val SIGNIFICANT_DISTANCE_METERS = 500.0 // 0.5 km
         private const val STABILITY_RADIUS_METERS = 150.0 // 150 meters
-        private const val STABILITY_TIME_MS = 20 * 60 * 1000L // 20 minutes
+        private const val STABILITY_TIME_MS = 5 * 60 * 1000L // 5 minutes
         
         // Location request parameters
-        private const val LOCATION_UPDATE_INTERVAL_MS = 10 * 60 * 1000L // 10 minutes
+        private const val LOCATION_UPDATE_INTERVAL_MS = 5 * 60 * 1000L // 5 minutes
         private const val FASTEST_LOCATION_INTERVAL_MS = 60 * 1000L // 60 seconds
         
         // Intent actions
@@ -116,6 +116,7 @@ class LocationTrackingService : Service() {
     
     private fun startLocationUpdates() {
         try {
+            Log.i(TAG, "Attempting to start location updates with interval: ${LOCATION_UPDATE_INTERVAL_MS}ms, fastest interval: ${FASTEST_LOCATION_INTERVAL_MS}ms, priority: HIGH_ACCURACY")
             val locationRequest = LocationRequest.Builder(
                 Priority.PRIORITY_HIGH_ACCURACY,
                 LOCATION_UPDATE_INTERVAL_MS
@@ -151,6 +152,7 @@ class LocationTrackingService : Service() {
         // If we don't have a stable location yet, set it
         if (lastStableLocation == null) {
             lastStableLocation = currentLocation
+            Log.i(TAG, "Initial stable location established at: ${currentLocation.latitude}, ${currentLocation.longitude}")
             updateNotification("Established baseline location")
             return
         }
@@ -161,23 +163,23 @@ class LocationTrackingService : Service() {
         
         if (distanceFromStable > SIGNIFICANT_DISTANCE_METERS && !isConfirmingStability) {
             // Significant movement detected, start monitoring for stability
-            Log.d(TAG, "Significant movement detected (${distanceFromStable}m). Starting stability monitoring.")
-            potentialNewLocation = currentLocation
+            potentialNewLocation = currentLocation // Set potential location first
             potentialNewLocationTimestamp = System.currentTimeMillis()
             isConfirmingStability = true
+            Log.i(TAG, "Potential new stable location identified at: ${potentialNewLocation?.latitude}, ${potentialNewLocation?.longitude}. Monitoring for stability over ${STABILITY_TIME_MS}ms within ${STABILITY_RADIUS_METERS}m.")
             updateNotification("Significant movement detected, monitoring stability")
         } else if (isConfirmingStability) {
             // Check if we're still within the stability radius of the potential new location
             val distanceFromPotential = currentLocation.distanceTo(potentialNewLocation!!)
             val timeAtPotentialLocation = System.currentTimeMillis() - potentialNewLocationTimestamp
             
-            Log.d(TAG, "Checking stability: ${distanceFromPotential}m from potential, ${timeAtPotentialLocation}ms elapsed")
+            Log.d(TAG, "Stability check: Current: ${currentLocation.latitude}, ${currentLocation.longitude}. Potential: ${potentialNewLocation?.latitude}, ${potentialNewLocation?.longitude}. Dist from potential: $distanceFromPotential m. Time at potential: $timeAtPotentialLocation ms.")
             
             if (distanceFromPotential <= STABILITY_RADIUS_METERS) {
                 // Still within stability radius
                 if (timeAtPotentialLocation >= STABILITY_TIME_MS) {
                     // Stability confirmed at new location
-                    Log.d(TAG, "Stability confirmed at new location after ${timeAtPotentialLocation/1000}s")
+                    Log.i(TAG, "New stable location CONFIRMED at: ${potentialNewLocation?.latitude}, ${potentialNewLocation?.longitude} after $timeAtPotentialLocation ms.")
                     
                     // Log the significant location change to Supabase
                     logSignificantLocationChange(lastStableLocation!!, potentialNewLocation!!, distanceFromStable)
@@ -194,8 +196,22 @@ class LocationTrackingService : Service() {
                 }
                 // Otherwise, continue monitoring stability
             } else {
-                // User moved away from the potential new location, reset stability monitoring
-                Log.d(TAG, "User moved away from potential new location, resetting stability monitoring")
+                // User moved away from the potential new location
+                Log.d(TAG, "User moved away from potential new location.")
+                if (potentialNewLocation != null && lastStableLocation != null) {
+                    val distanceFromOriginalStable = potentialNewLocation!!.distanceTo(lastStableLocation!!)
+                    // If the potential location was still somewhat significant compared to the last fully stable one
+                    if (distanceFromOriginalStable > (SIGNIFICANT_DISTANCE_METERS / 2)) {
+                        Log.i(TAG, "Logging potential location as a TRANSITORY stable point: ${potentialNewLocation?.latitude}, ${potentialNewLocation?.longitude}")
+                        // Log this as a significant, albeit not fully stabilized, location.
+                        // The stability duration will be shorter than STABILITY_TIME_MS.
+                        logSignificantLocationChange(lastStableLocation!!, potentialNewLocation!!, distanceFromOriginalStable)
+                        lastStableLocation = potentialNewLocation // Update base for next significant hop
+                    } else {
+                        Log.d(TAG, "Potential location ${potentialNewLocation?.latitude}, ${potentialNewLocation?.longitude} discarded as not a significant transit point.")
+                    }
+                }
+                // Reset stability monitoring
                 isConfirmingStability = false
                 potentialNewLocation = null
                 potentialNewLocationTimestamp = 0
@@ -206,6 +222,7 @@ class LocationTrackingService : Service() {
     
     private fun logSignificantLocationChange(previousLocation: Location, newLocation: Location, distanceMeters: Float) {
         serviceScope.launch {
+            var eventJsonString = "Event data not available or construction failed."
             try {
                 val userId = auth.currentUserOrNull()?.id
                 if (userId == null) {
@@ -240,12 +257,14 @@ class LocationTrackingService : Service() {
                         put("0", "automated_detection")
                     })
                 }
+                eventJsonString = event.toString() // Capture string representation
                 
                 // Insert event into Supabase
+                Log.i(TAG, "Attempting to log significant location change to Supabase. Event data: $eventJsonString")
                 postgrest["events"].insert(event)
                 Log.d(TAG, "Successfully logged significant location change to Supabase")
             } catch (e: Exception) {
-                Log.e(TAG, "Error logging location change to Supabase", e)
+                Log.e(TAG, "Error logging location change to Supabase. Attempted event data: $eventJsonString. User ID: ${auth.currentUserOrNull()?.id}", e)
             }
         }
     }

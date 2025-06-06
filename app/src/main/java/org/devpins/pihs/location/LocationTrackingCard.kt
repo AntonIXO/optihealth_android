@@ -38,7 +38,9 @@ fun LocationTrackingCard(
     onStartTracking: () -> Unit,
     onStopTracking: () -> Unit,
     onOpenAppSettings: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isIgnoringBatteryOptimizations: Boolean,
+    onRequestIgnoreBatteryOptimizations: () -> Unit
 ) {
     ElevatedCard(
         modifier = modifier.fillMaxWidth(),
@@ -117,7 +119,7 @@ fun LocationTrackingCard(
             } else {
                 // All permissions granted, show tracking controls
                 Text(
-                    text = "PIHS will track significant location changes (>0.5km) where you remain stable for at least 15 minutes.",
+                    text = "PIHS will track significant location changes (>0.5km) where you remain stable for at least 5 minutes.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
@@ -145,9 +147,32 @@ fun LocationTrackingCard(
                         }
                     )
                 }
+
+                // Battery Optimization Section
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Battery Optimization: ${if (isIgnoringBatteryOptimizations) "Exempt" else "Not Exempt"}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (isIgnoringBatteryOptimizations) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.error
+                )
+                if (!isIgnoringBatteryOptimizations) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "If tracking stops unexpectedly, exempting the app from battery optimizations may help improve reliability.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = onRequestIgnoreBatteryOptimizations,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Manage Battery Optimization")
+                    }
+                }
             }
             
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(16.dp)) // Adjusted spacer for better separation before app settings
             
             // App settings button (for managing permissions)
             OutlinedButton(
