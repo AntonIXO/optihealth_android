@@ -183,10 +183,27 @@ object UsageStatsHelper {
                 // and `ignoreDuplicates = true` (check Supabase KT library for exact syntax if needed)
                 // For now, relying on default behavior or a table policy for ON CONFLICT DO NOTHING.
             }
-            println("Successfully logged ${dataPoints.size} data points to Supabase.")
-        } catch (e: Exception) {
-            println("Error logging to Supabase: ${e.message}")
-            // Handle error appropriately, e.g., log to a local analytics service or retry mechanism
+            var successfulUploads = 0
+            dataPoints.forEach { dataPoint ->
+                try {
+                    supabaseClient.postgrest.from("data_points").insert(dataPoint) {
+                        // Potential for onConflict handling here if needed, see original comment
+                    }
+                    successfulUploads++
+                } catch (e: Exception) {
+                    // Log specific data point that failed, but without PII if possible from dataPoint.toString()
+                    // For example, log metric_name and timestamp.
+                    println("Error logging data point for metric ${dataPoint.metric_name} at ${dataPoint.timestamp} to Supabase: ${e.message}")
+                    // Optionally, log e for full stack trace if needed for debugging, but be mindful of log size.
+                }
+            }
+            println("Successfully logged $successfulUploads out of ${dataPoints.size} data points to Supabase.")
+            if (successfulUploads < dataPoints.size) {
+                println("${dataPoints.size - successfulUploads} data points failed to upload.")
+                // You could throw a custom exception here if you want the worker to result in partial success or specific error
+            }
+        } catch (e: Exception) { // This outer catch is now more for unexpected errors or issues with the loop itself
+            println("Unexpected error during Supabase logging loop: ${e.message}")
         }
     }
 }

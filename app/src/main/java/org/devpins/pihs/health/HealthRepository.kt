@@ -410,7 +410,12 @@ class HealthRepository @Inject constructor(
                             put("value_numeric", weightRecord.weight)
                             put("unit", "kg")
                         }
-                        postgrest["data_points"].insert(dataPoint)
+                        try {
+                            postgrest["data_points"].insert(dataPoint)
+                        } catch (e: Exception) {
+                            Log.e("HealthConnect", "HealthRepository: Error uploading weight record for user $userId, data: $dataPoint", e)
+                            // Continue with the next record
+                        }
                     } else {
                         Log.d("HealthConnect", "HealthRepository: Skipping weight record with value 0")
                     }
@@ -443,7 +448,12 @@ class HealthRepository @Inject constructor(
                         put("category", "exercise")
                         put("properties", properties)
                     }
-                    postgrest["events"].insert(event)
+                    try {
+                        postgrest["events"].insert(event)
+                    } catch (e: Exception) {
+                        Log.e("HealthConnect", "HealthRepository: Error uploading exercise event for user $userId, event: $event", e)
+                        // Continue with the next record
+                    }
                 }
                 Log.d("HealthConnect", "HealthRepository: Uploaded exercise records to events table")
             }
@@ -513,7 +523,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", sleepRecord.totalSleepDurationMinutes)
                     put("unit", "minutes")
                 }
-                postgrest["data_points"].insert(totalSleepDurationPoint)
+                try {
+                    postgrest["data_points"].insert(totalSleepDurationPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading total_sleep_duration_minutes for user $userId, record: $sleepRecord", e)
+                }
             }
 
             // Deep sleep duration
@@ -526,7 +540,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", sleepRecord.deepSleepDurationMinutes)
                     put("unit", "minutes")
                 }
-                postgrest["data_points"].insert(deepSleepDurationPoint)
+                try {
+                    postgrest["data_points"].insert(deepSleepDurationPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading deep_sleep_duration_minutes for user $userId, record: $sleepRecord", e)
+                }
             }
 
             // Light sleep duration
@@ -539,7 +557,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", sleepRecord.lightSleepDurationMinutes)
                     put("unit", "minutes")
                 }
-                postgrest["data_points"].insert(lightSleepDurationPoint)
+                try {
+                    postgrest["data_points"].insert(lightSleepDurationPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading light_sleep_duration_minutes for user $userId, record: $sleepRecord", e)
+                }
             }
 
             // REM sleep duration
@@ -552,7 +574,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", sleepRecord.remSleepDurationMinutes)
                     put("unit", "minutes")
                 }
-                postgrest["data_points"].insert(remSleepDurationPoint)
+                try {
+                    postgrest["data_points"].insert(remSleepDurationPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading rem_sleep_duration_minutes for user $userId, record: $sleepRecord", e)
+                }
             }
 
             // Sleep score (if available)
@@ -565,7 +591,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", sleepRecord.sleepScore)
                     put("unit", "score")
                 }
-                postgrest["data_points"].insert(sleepScorePoint)
+                try {
+                    postgrest["data_points"].insert(sleepScorePoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading sleep_score for user $userId, record: $sleepRecord", e)
+                }
             }
 
             // Sleep efficiency
@@ -578,7 +608,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", sleepRecord.sleepEfficiencyPercentage)
                     put("unit", "percent")
                 }
-                postgrest["data_points"].insert(sleepEfficiencyPoint)
+                try {
+                    postgrest["data_points"].insert(sleepEfficiencyPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading sleep_efficiency_percentage for user $userId, record: $sleepRecord", e)
+                }
             }
 
             // Sleep latency
@@ -591,7 +625,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", sleepRecord.sleepLatencyMinutes)
                     put("unit", "minutes")
                 }
-                postgrest["data_points"].insert(sleepLatencyPoint)
+                try {
+                    postgrest["data_points"].insert(sleepLatencyPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading sleep_latency_minutes for user $userId, record: $sleepRecord", e)
+                }
             }
 
             // Awakenings count
@@ -604,7 +642,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", sleepRecord.awakeningsCount.toDouble())
                     put("unit", "count")
                 }
-                postgrest["data_points"].insert(awakeningsCountPoint)
+                try {
+                    postgrest["data_points"].insert(awakeningsCountPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading awakenings_count for user $userId, record: $sleepRecord", e)
+                }
             }
 
             // Time in bed
@@ -617,7 +659,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", sleepRecord.timeInBedMinutes)
                     put("unit", "minutes")
                 }
-                postgrest["data_points"].insert(timeInBedPoint)
+                try {
+                    postgrest["data_points"].insert(timeInBedPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading time_in_bed_minutes for user $userId, record: $sleepRecord", e)
+                }
             }
         }
 
@@ -633,7 +679,11 @@ class HealthRepository @Inject constructor(
                         put("value_numeric", sample.beatsPerMinute.toDouble())
                         put("unit", "bpm")
                     }
-                    postgrest["data_points"].insert(dataPoint)
+                    try {
+                        postgrest["data_points"].insert(dataPoint)
+                    } catch (e: Exception) {
+                        Log.e("HealthConnect", "HealthRepository: Error uploading heartrate_timeseries_bpm for user $userId, sample: $sample", e)
+                    }
                 }
             }
         }
@@ -651,7 +701,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", bpRecord.systolic)
                     put("unit", "mmHg")
                 }
-                postgrest["data_points"].insert(systolicPoint)
+                try {
+                    postgrest["data_points"].insert(systolicPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading bloodpressure_systolic_mmhg for user $userId, record: $bpRecord", e)
+                }
 
                 // Diastolic
                 val diastolicPoint = buildJsonObject {
@@ -662,7 +716,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", bpRecord.diastolic)
                     put("unit", "mmHg")
                 }
-                postgrest["data_points"].insert(diastolicPoint)
+                try {
+                    postgrest["data_points"].insert(diastolicPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading bloodpressure_diastolic_mmhg for user $userId, record: $bpRecord", e)
+                }
             }
         }
 
@@ -681,7 +739,11 @@ class HealthRepository @Inject constructor(
                         put("meal_type", bgRecord.mealType)
                     })
                 }
-                postgrest["data_points"].insert(dataPoint)
+                try {
+                    postgrest["data_points"].insert(dataPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading bloodglucose_level_mmolL for user $userId, record: $bgRecord", e)
+                }
             }
         }
 
@@ -699,7 +761,11 @@ class HealthRepository @Inject constructor(
                         put("measurement_location", tempRecord.measurementLocation)
                     })
                 }
-                postgrest["data_points"].insert(dataPoint)
+                try {
+                    postgrest["data_points"].insert(dataPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading bodytemperature_reading_celsius for user $userId, record: $tempRecord", e)
+                }
             }
         }
 
@@ -714,7 +780,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", o2Record.saturation)
                     put("unit", "percent")
                 }
-                postgrest["data_points"].insert(dataPoint)
+                try {
+                    postgrest["data_points"].insert(dataPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading spo2_reading_percentage for user $userId, record: $o2Record", e)
+                }
             }
         }
 
@@ -729,7 +799,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", rrRecord.rate)
                     put("unit", "breaths_per_minute")
                 }
-                postgrest["data_points"].insert(dataPoint)
+                try {
+                    postgrest["data_points"].insert(dataPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading respiratoryrate_reading_bpm for user $userId, record: $rrRecord", e)
+                }
             }
         }
 
@@ -744,7 +818,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", stepsRecord.count.toDouble())
                     put("unit", "count")
                 }
-                postgrest["data_points"].insert(dataPoint)
+                try {
+                    postgrest["data_points"].insert(dataPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading activity_steps_total_count for user $userId, record: $stepsRecord", e)
+                }
             }
         }
 
@@ -760,7 +838,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", exerciseRecord.durationMinutes)
                     put("unit", "minutes")
                 }
-                postgrest["data_points"].insert(workoutDurationPoint)
+                try {
+                    postgrest["data_points"].insert(workoutDurationPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading workout_duration_minutes for user $userId, record: $exerciseRecord", e)
+                }
             }
 
             // Upload workout calories burned
@@ -773,7 +855,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", exerciseRecord.calories)
                     put("unit", "kcal")
                 }
-                postgrest["data_points"].insert(workoutCaloriesPoint)
+                try {
+                    postgrest["data_points"].insert(workoutCaloriesPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading workout_calories_burned_kcal for user $userId, record: $exerciseRecord", e)
+                }
             }
 
             // Upload workout distance
@@ -786,7 +872,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", exerciseRecord.distanceKm)
                     put("unit", "km")
                 }
-                postgrest["data_points"].insert(workoutDistancePoint)
+                try {
+                    postgrest["data_points"].insert(workoutDistancePoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading workout_distance_km for user $userId, record: $exerciseRecord", e)
+                }
             }
 
             // Upload workout average heart rate
@@ -799,7 +889,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", exerciseRecord.averageHeartRateBpm)
                     put("unit", "bpm")
                 }
-                postgrest["data_points"].insert(workoutAvgHrPoint)
+                try {
+                    postgrest["data_points"].insert(workoutAvgHrPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading workout_average_heart_rate_bpm for user $userId, record: $exerciseRecord", e)
+                }
             }
 
             // Upload workout max heart rate
@@ -812,7 +906,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", exerciseRecord.maxHeartRateBpm)
                     put("unit", "bpm")
                 }
-                postgrest["data_points"].insert(workoutMaxHrPoint)
+                try {
+                    postgrest["data_points"].insert(workoutMaxHrPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading workout_max_heart_rate_bpm for user $userId, record: $exerciseRecord", e)
+                }
             }
 
             // Upload workout type as text
@@ -823,7 +921,11 @@ class HealthRepository @Inject constructor(
                 put("metric_name", "workout_type")
                 put("value_text", exerciseRecord.exerciseType)
             }
-            postgrest["data_points"].insert(workoutTypePoint)
+            try {
+                postgrest["data_points"].insert(workoutTypePoint)
+            } catch (e: Exception) {
+                Log.e("HealthConnect", "HealthRepository: Error uploading workout_type for user $userId, record: $exerciseRecord", e)
+            }
 
             // Upload workout intensity if available
             if (exerciseRecord.intensityManual > 0) {
@@ -835,7 +937,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", exerciseRecord.intensityManual.toDouble())
                     put("unit", "scale")
                 }
-                postgrest["data_points"].insert(workoutIntensityPoint)
+                try {
+                    postgrest["data_points"].insert(workoutIntensityPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading workout_intensity_manual for user $userId, record: $exerciseRecord", e)
+                }
             }
 
             // Upload steps count from workout if available
@@ -848,7 +954,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", exerciseRecord.stepsCount.toDouble())
                     put("unit", "count")
                 }
-                postgrest["data_points"].insert(workoutStepsPoint)
+                try {
+                    postgrest["data_points"].insert(workoutStepsPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading steps_count for user $userId, record: $exerciseRecord", e)
+                }
             }
 
             // Upload active energy from workout if available
@@ -861,7 +971,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", exerciseRecord.activeEnergyKcal)
                     put("unit", "kcal")
                 }
-                postgrest["data_points"].insert(activeEnergyPoint)
+                try {
+                    postgrest["data_points"].insert(activeEnergyPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading active_energy_kcal for user $userId, record: $exerciseRecord", e)
+                }
             }
 
             // Upload exercise minutes total
@@ -874,7 +988,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", exerciseRecord.durationMinutes)
                     put("unit", "minutes")
                 }
-                postgrest["data_points"].insert(exerciseMinutesPoint)
+                try {
+                    postgrest["data_points"].insert(exerciseMinutesPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading exercise_minutes_total for user $userId, record: $exerciseRecord", e)
+                }
             }
         }
 
@@ -904,7 +1022,11 @@ class HealthRepository @Inject constructor(
                     put("category", "diet")
                     put("properties", properties)
                 }
-                postgrest["events"].insert(event)
+                try {
+                    postgrest["events"].insert(event)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading nutrition event for user $userId, event: $event", e)
+                }
             }
         }
 
@@ -919,7 +1041,11 @@ class HealthRepository @Inject constructor(
                     put("value_numeric", hydrationRecord.volume)
                     put("unit", "L")
                 }
-                postgrest["data_points"].insert(dataPoint)
+                try {
+                    postgrest["data_points"].insert(dataPoint)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading hydration_intake_liters for user $userId, record: $hydrationRecord", e)
+                }
             }
         }
     }
