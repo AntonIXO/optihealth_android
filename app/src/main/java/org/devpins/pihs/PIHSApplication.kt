@@ -16,6 +16,12 @@ import java.util.Calendar
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
+/**
+ * Custom [Application] class for PIHS.
+ * It implements [Configuration.Provider] to provide a custom [WorkManager] configuration,
+ * enabling Hilt integration for workers.
+ * It also schedules daily background synchronization tasks for health and usage data.
+ */
 @HiltAndroidApp
 class PIHSApplication : Application(), Configuration.Provider {
 

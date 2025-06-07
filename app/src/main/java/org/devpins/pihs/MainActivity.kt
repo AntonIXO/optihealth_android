@@ -431,7 +431,12 @@ fun UsageStatsCard(supabaseClient: SupabaseClient) {
                                 return@launch
                             }
                             // IMPORTANT: Replace with your actual Metric Source ID from Supabase
-                            val metricSourceId = "YOUR_APP_USAGE_METRIC_SOURCE_ID" 
+                            // TODO: This metricSourceId is a placeholder from UI testing.
+                            // The actual UsageDataSyncWorker creates/retrieves the correct ID.
+                            // For a manual UI sync, this would need a more robust way to get the ID
+                            // (e.g., by querying the metric_sources table based on USAGE_SOURCE_IDENTIFIER
+                            // for the current user, similar to UsageDataSyncWorker).
+                            val metricSourceId = "YOUR_APP_USAGE_METRIC_SOURCE_ID"
 
                             try {
                                 val dataPoints = UsageStatsHelper.getAndProcessUsageStats(

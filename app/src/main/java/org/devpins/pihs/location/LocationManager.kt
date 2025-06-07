@@ -17,14 +17,26 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Manages location-related functionalities including permission checking,
+ * requesting permissions, and starting/stopping the location tracking service.
+ * It handles differences in permission requirements based on Android SDK version.
+ *
+ * @property context The application context, injected by Hilt.
+ */
 @Singleton
 class LocationManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     companion object {
         private const val TAG = "LocationManager"
-        
-        // Required permissions
+
+        /**
+         * Array of required location permissions.
+         * For Android 13 (TIRAMISU) and above, this includes [Manifest.permission.POST_NOTIFICATIONS]
+         * in addition to [Manifest.permission.ACCESS_FINE_LOCATION] and [Manifest.permission.ACCESS_COARSE_LOCATION].
+         * For older versions, it only includes fine and coarse location permissions.
+         */
         val REQUIRED_PERMISSIONS = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             arrayOf(
                 Manifest.permission.ACCESS_FINE_LOCATION,
@@ -39,20 +51,31 @@ class LocationManager @Inject constructor(
         }
         
         // Background location permission (separate because it requires special handling)
+        /**
+         * Constant for the background location permission ([Manifest.permission.ACCESS_BACKGROUND_LOCATION]).
+         * This permission is requested separately for Android Q (10) and above.
+         */
         const val BACKGROUND_LOCATION_PERMISSION = Manifest.permission.ACCESS_BACKGROUND_LOCATION
     }
-    
+
     /**
-     * Checks if all required permissions are granted
+     * Checks if all permissions defined in [REQUIRED_PERMISSIONS] have been granted.
+     *
+     * @return `true` if all required permissions are granted, `false` otherwise.
      */
     fun hasRequiredPermissions(): Boolean {
         return REQUIRED_PERMISSIONS.all {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
         }
     }
-    
+
     /**
-     * Checks if background location permission is granted
+     * Checks if the background location permission has been granted.
+     * For devices running Android versions older than Q (10), this check defaults to
+     * whether all [REQUIRED_PERMISSIONS] are granted, as background location was
+     * part of the standard location permissions.
+     *
+     * @return `true` if background location permission is granted (or if not applicable and foreground permissions are granted), `false` otherwise.
      */
     fun hasBackgroundLocationPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -65,9 +88,17 @@ class LocationManager @Inject constructor(
             hasRequiredPermissions()
         }
     }
-    
+
     /**
-     * Registers permission request launchers
+     * Registers activity result launchers for handling permission requests for both
+     * required foreground permissions and the background location permission.
+     *
+     * @param activity The [Activity] (must be a [androidx.activity.ComponentActivity]) to register the launchers with.
+     * @param onRequiredPermissionsResult A callback function that receives a boolean indicating if all required foreground permissions were granted.
+     * @param onBackgroundPermissionResult A callback function that receives a boolean indicating if the background location permission was granted.
+     * @return A [Pair] containing two [ActivityResultLauncher] instances:
+     *         - The first launcher is for the array of [REQUIRED_PERMISSIONS].
+     *         - The second launcher is for the single [BACKGROUND_LOCATION_PERMISSION].
      */
     fun registerPermissionLaunchers(
         activity: Activity,
@@ -90,26 +121,34 @@ class LocationManager @Inject constructor(
         
         return Pair(requiredPermissionsLauncher, backgroundPermissionLauncher)
     }
-    
+
     /**
-     * Requests required permissions
+     * Requests the set of [REQUIRED_PERMISSIONS] using the provided launcher.
+     *
+     * @param permissionLauncher The [ActivityResultLauncher] for an array of permission strings.
      */
     fun requestRequiredPermissions(permissionLauncher: ActivityResultLauncher<Array<String>>) {
         permissionLauncher.launch(REQUIRED_PERMISSIONS)
     }
-    
+
     /**
-     * Requests background location permission
-     * Note: This should only be called after the user has granted the required permissions
+     * Requests the [BACKGROUND_LOCATION_PERMISSION] using the provided launcher.
+     * This should only be called after [REQUIRED_PERMISSIONS] have been granted.
+     * This function has an effect only on Android Q (10) and above.
+     *
+     * @param permissionLauncher The [ActivityResultLauncher] for a single permission string.
      */
     fun requestBackgroundLocationPermission(permissionLauncher: ActivityResultLauncher<String>) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             permissionLauncher.launch(BACKGROUND_LOCATION_PERMISSION)
         }
     }
-    
+
     /**
-     * Creates an intent to open the app settings
+     * Creates an [Intent] to open the application's details settings screen.
+     * This allows users to manually change app permissions if they have been permanently denied.
+     *
+     * @return An [Intent] to navigate to the app's settings page.
      */
     fun getAppSettingsIntent(): Intent {
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
@@ -117,46 +156,50 @@ class LocationManager @Inject constructor(
         intent.data = uri
         return intent
     }
-    
+
     /**
-     * Starts location tracking service
+     * Starts the [LocationTrackingService].
+     * For Android O (8.0) and above, it starts the service as a foreground service.
+     * For older versions, it uses `startService`.
      */
     fun startLocationTracking() {
-        Log.d(TAG, "Starting location tracking service")
+        Log.i(TAG, "Starting location tracking service")
         val intent = Intent(context, LocationTrackingService::class.java).apply {
             action = LocationTrackingService.ACTION_START_LOCATION_TRACKING
         }
-        
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent)
         } else {
             context.startService(intent)
         }
     }
-    
+
     /**
-     * Stops location tracking service
+     * Stops the [LocationTrackingService].
      */
     fun stopLocationTracking() {
-        Log.d(TAG, "Stopping location tracking service")
+        Log.i(TAG, "Stopping location tracking service")
         val intent = Intent(context, LocationTrackingService::class.java).apply {
             action = LocationTrackingService.ACTION_STOP_LOCATION_TRACKING
         }
         context.startService(intent)
     }
-    
+
     /**
-     * Checks if all permissions are granted and starts location tracking
-     * Returns true if tracking was started, false otherwise
+     * Checks if both required foreground and background location permissions are granted.
+     * If they are, it starts the location tracking service.
+     *
+     * @return `true` if all necessary permissions were granted and tracking was started, `false` otherwise.
      */
     fun checkPermissionsAndStartTracking(): Boolean {
         if (!hasRequiredPermissions()) {
-            Log.d(TAG, "Cannot start tracking: Missing required permissions")
+            Log.w(TAG, "Cannot start tracking: Missing required permissions")
             return false
         }
         
         if (!hasBackgroundLocationPermission()) {
-            Log.d(TAG, "Cannot start tracking: Missing background location permission")
+            Log.w(TAG, "Cannot start tracking: Missing background location permission")
             return false
         }
         

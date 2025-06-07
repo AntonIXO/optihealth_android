@@ -21,6 +21,20 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 
+/**
+ * Represents a metric source entry from the Supabase database.
+ * This data class is used to decode responses when querying or creating metric sources.
+ *
+ * @property id The unique identifier of the metric source.
+ * @property user_id The ID of the user this metric source belongs to.
+ * @property source_identifier A unique string identifying the type of source (e.g., "android_app_usage_daily_v1").
+ * @property source_name A human-readable name for the source (e.g., "Android App Usage (Daily)").
+ * @property source_type A category or type for the source (e.g., "background_android_usage_sync").
+ * @property is_active Boolean indicating if this source is currently active.
+ * @property last_synced_at Optional string representing the last date ("YYYY-MM-DD") data was synced for this source.
+ * @property created_at Optional string representing the creation timestamp of this record.
+ * @property updated_at Optional string representing the last update timestamp of this record.
+ */
 @Serializable
 data class MetricSource(
     val id: Long,
@@ -34,6 +48,16 @@ data class MetricSource(
     val updated_at: String? = null
 )
 
+/**
+ * A [CoroutineWorker] that periodically syncs daily app usage data to Supabase.
+ * It ensures that usage statistics permission is granted, retrieves data using [UsageStatsHelper],
+ * and manages a `metric_sources` entry in Supabase to track the last sync date for this data type.
+ * This worker is managed by Hilt and intended for daily execution.
+ *
+ * @param appContext The application context, injected by Hilt.
+ * @param workerParams Parameters for configuring the worker, injected by Hilt.
+ * @param supabaseClient The [SupabaseClient] for interacting with the backend.
+ */
 @HiltWorker
 class UsageDataSyncWorker @AssistedInject constructor(
     @Assisted private val appContext: Context,
@@ -137,7 +161,8 @@ class UsageDataSyncWorker @AssistedInject constructor(
                         put("is_active", true)
                         put("last_synced_at", null as String?) // Explicitly null
                     }
-                val result = client.postgrest["metric_sources"].insert(newSource).decodeSingle<org.devpins.pihs.health.MetricSource>()
+                // Use the local MetricSource data class for decoding
+                val result = client.postgrest["metric_sources"].insert(newSource).decodeSingle<MetricSource>()
                 Log.d(TAG, "Created new metric source with ID: ${result.id}")
                 return Pair(result.id, null)
             }
