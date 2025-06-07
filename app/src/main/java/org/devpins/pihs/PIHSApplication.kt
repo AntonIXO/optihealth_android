@@ -11,6 +11,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import dagger.hilt.android.HiltAndroidApp
 import org.devpins.pihs.background.HealthDataSyncWorker
+import org.devpins.pihs.background.SoundLevelWorker // Added import
 import org.devpins.pihs.background.UsageDataSyncWorker
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
@@ -82,6 +83,26 @@ class PIHSApplication : Application(), Configuration.Provider {
             usageSyncRequest
         )
         Log.d(TAG, "Enqueued ${UsageDataSyncWorker.WORK_NAME}")
+
+        // Schedule SoundLevelWorker
+        val soundWorkerConstraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            // .setRequiresBatteryNotLow(true) // Consider if needed
+            .build()
+
+        val soundLevelWorkerRequest =
+            PeriodicWorkRequestBuilder<SoundLevelWorker>(30, TimeUnit.MINUTES)
+                .setConstraints(soundWorkerConstraints)
+                // No initial delay needed for frequent periodic task, unless specific timing is required.
+                .addTag(SoundLevelWorker.WORK_NAME) // Optional
+                .build()
+
+        workManager.enqueueUniquePeriodicWork(
+            SoundLevelWorker.WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP, // Or REPLACE if worker definition changes often
+            soundLevelWorkerRequest
+        )
+        Log.d(TAG, "Enqueued ${SoundLevelWorker.WORK_NAME}")
     }
 
     /**
