@@ -3,6 +3,7 @@ package org.devpins.pihs.health
 import android.content.Intent
 import android.util.Log
 import androidx.activity.result.contract.ActivityResultContract
+import org.devpins.pihs.BuildConfig
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.records.BloodGlucoseRecord
@@ -20,8 +21,10 @@ import androidx.health.connect.client.records.RespiratoryRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.WeightRecord
+import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
+import kotlin.reflect.KClass
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,11 +32,24 @@ import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 
+private const val DEFAULT_DATA_PULL_DAYS = 30L
+
+/**
+ * Manages interactions with Health Connect, including checking availability, permissions,
+ * and reading various health data records.
+ *
+ * @property healthConnectClient The [HealthConnectClient] instance, nullable if Health Connect is not available.
+ * @property healthConnectPermissions The set of Health Connect permissions the application requires.
+ */
 @Singleton
 class HealthConnectManager @Inject constructor(
     private val healthConnectClient: HealthConnectClient?,
     private val healthConnectPermissions: Set<String>
 ) {
+    /**
+     * Default number of days to pull data for when getting "last month's data".
+     */
+
     // State flow to track availability of Health Connect
     private val _availability = MutableStateFlow(HealthConnectAvailability.UNKNOWN)
     val availability: StateFlow<HealthConnectAvailability> = _availability.asStateFlow()
@@ -42,19 +58,26 @@ class HealthConnectManager @Inject constructor(
     private val _permissionsGranted = MutableStateFlow(false)
     val permissionsGranted: StateFlow<Boolean> = _permissionsGranted.asStateFlow()
 
-    // Initialize the manager
+    /**
+     * Initializes the HealthConnectManager by checking Health Connect SDK availability and then
+     * verifying if the required permissions have been granted.
+     * This function should typically be called once, for example, during application startup
+     * or when health data related features are first accessed.
+     */
     suspend fun initialize() {
-        Log.d("HealthConnect", "Initializing HealthConnectManager")
-        Log.d("HealthConnect", "Initial client: $healthConnectClient")
+        Log.v("HealthConnect", "Initializing HealthConnectManager")
+        if (BuildConfig.DEBUG) {
+            Log.d("HealthConnect", "Initial client: $healthConnectClient")
+        }
 
         checkAvailability()
-        Log.d("HealthConnect", "After checkAvailability, availability: ${_availability.value}")
+        Log.v("HealthConnect", "After checkAvailability, availability: ${_availability.value}")
 
         if (_availability.value == HealthConnectAvailability.INSTALLED) {
-            Log.d("HealthConnect", "Health Connect is installed, checking permissions")
+            Log.v("HealthConnect", "Health Connect is installed, checking permissions")
             checkPermissions()
         } else {
-            Log.d("HealthConnect", "Health Connect is not installed, skipping permission check")
+            Log.v("HealthConnect", "Health Connect is not installed, skipping permission check")
         }
     }
 
@@ -62,16 +85,16 @@ class HealthConnectManager @Inject constructor(
     private fun checkAvailability() {
         val newAvailability = when {
             healthConnectClient == null -> {
-                Log.d("HealthConnect", "HealthConnectManager: healthConnectClient is null, reporting NOT_INSTALLED")
+                Log.v("HealthConnect", "HealthConnectManager: healthConnectClient is null, reporting NOT_INSTALLED")
                 HealthConnectAvailability.NOT_INSTALLED
             }
             else -> {
-                Log.d("HealthConnect", "HealthConnectManager: healthConnectClient is available, reporting INSTALLED")
+                Log.v("HealthConnect", "HealthConnectManager: healthConnectClient is available, reporting INSTALLED")
                 HealthConnectAvailability.INSTALLED
             }
         }
 
-        Log.d("HealthConnect", "HealthConnectManager: Setting availability to $newAvailability")
+        Log.v("HealthConnect", "HealthConnectManager: Setting availability to $newAvailability")
         _availability.value = newAvailability
     }
 
@@ -79,13 +102,17 @@ class HealthConnectManager @Inject constructor(
     private suspend fun checkPermissions() {
         healthConnectClient?.let { client ->
             try {
-                Log.d("HealthConnect", "Checking permissions with client: $client")
+                if (BuildConfig.DEBUG) {
+                    Log.d("HealthConnect", "Checking permissions with client: $client")
+                }
                 val granted = client.permissionController.getGrantedPermissions()
-                Log.d("HealthConnect", "Granted permissions: $granted")
-                Log.d("HealthConnect", "Required permissions: $healthConnectPermissions")
+                if (BuildConfig.DEBUG) {
+                    Log.d("HealthConnect", "Granted permissions: $granted")
+                    Log.d("HealthConnect", "Required permissions: $healthConnectPermissions")
+                }
 
                 val allGranted = granted.containsAll(healthConnectPermissions)
-                Log.d("HealthConnect", "All permissions granted: $allGranted")
+                Log.v("HealthConnect", "All permissions granted: $allGranted")
 
                 _permissionsGranted.value = allGranted
             } catch (e: Exception) {
@@ -93,7 +120,7 @@ class HealthConnectManager @Inject constructor(
                 _permissionsGranted.value = false
             }
         } ?: run {
-            Log.d("HealthConnect", "Cannot check permissions, client is null")
+            Log.v("HealthConnect", "Cannot check permissions, client is null")
             _permissionsGranted.value = false
         }
     }
@@ -103,284 +130,221 @@ class HealthConnectManager @Inject constructor(
         return PermissionController.createRequestPermissionResultContract()
     }
 
-    // Get permissions to request
+    /**
+     * Returns the set of Health Connect permissions that the application will request.
+     * @return A set of permission strings.
+     */
     fun getPermissionsToRequest(): Set<String> {
-        Log.d("HealthConnect", "Getting permissions to request: $healthConnectPermissions")
+        if (BuildConfig.DEBUG) {
+            Log.d("HealthConnect", "Getting permissions to request: $healthConnectPermissions")
+        }
         return healthConnectPermissions
     }
 
     // Handle permission result
     suspend fun handlePermissionResult(grantedPermissions: Set<String>) {
-        Log.d("HealthConnect", "Permission result received: $grantedPermissions")
-        Log.d("HealthConnect", "Required permissions: $healthConnectPermissions")
+        if (BuildConfig.DEBUG) {
+            Log.d("HealthConnect", "Permission result received: $grantedPermissions")
+            Log.d("HealthConnect", "Required permissions: $healthConnectPermissions")
+        }
 
         val allGranted = grantedPermissions.containsAll(healthConnectPermissions)
-        Log.d("HealthConnect", "All permissions granted: $allGranted")
+        Log.v("HealthConnect", "All permissions granted: $allGranted")
 
         _permissionsGranted.value = allGranted
     }
 
-    // Get intent to open Health Connect settings
+    /**
+     * Creates an [Intent] that can be used to launch the Health Connect settings screen.
+     * This allows the user to manage Health Connect settings directly.
+     * @return An [Intent] to open Health Connect settings.
+     */
     fun getHealthConnectSettingsIntent(): Intent {
-        Log.d("HealthConnect", "HealthConnectManager: Creating Health Connect settings intent")
+        Log.v("HealthConnect", "HealthConnectManager: Creating Health Connect settings intent")
         val intent = Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS")
         // No need to set data URI for this intent
-        Log.d("HealthConnect", "HealthConnectManager: Health Connect settings intent created: $intent")
+        if (BuildConfig.DEBUG) {
+            Log.d("HealthConnect", "HealthConnectManager: Health Connect settings intent created: $intent")
+        }
         return intent
     }
 
-    // Read steps data
+    // Generic data reading function
+    private suspend fun <T : Record> readData(recordType: KClass<T>, start: Instant, end: Instant): List<T> {
+        healthConnectClient?.let { client ->
+            try {
+                val request = ReadRecordsRequest(
+                    recordType = recordType,
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
+                )
+                if (BuildConfig.DEBUG) {
+                    Log.d("HealthConnect", "HealthConnectManager: Created ${recordType.simpleName} request: $request")
+                }
+                val response = client.readRecords(request)
+                Log.v("HealthConnect", "HealthConnectManager: Read ${response.records.size} ${recordType.simpleName} records")
+                return response.records
+            } catch (e: Exception) {
+                Log.e("HealthConnect", "HealthConnectManager: Error reading ${recordType.simpleName} data", e)
+                return emptyList()
+            }
+        } ?: run {
+            Log.v("HealthConnect", "HealthConnectManager: Cannot read ${recordType.simpleName} data, client is null")
+            return emptyList()
+        }
+    }
+
+    /**
+     * Reads [StepsRecord] data from Health Connect within the specified time range.
+     * @param start The start [Instant] of the time range.
+     * @param end The end [Instant] of the time range.
+     * @return A list of [StepsRecord]s, or an empty list if an error occurs or client is null.
+     */
     suspend fun readStepsData(start: Instant, end: Instant): List<StepsRecord> {
-        Log.d("HealthConnect", "HealthConnectManager: Reading steps data from $start to $end")
-        return healthConnectClient?.let { client ->
-            try {
-                val request = ReadRecordsRequest(
-                    recordType = StepsRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
-                )
-                Log.d("HealthConnect", "HealthConnectManager: Created steps request: $request")
-
-                val records = client.readRecords(request).records
-                Log.d("HealthConnect", "HealthConnectManager: Read ${records.size} steps records")
-                records
-            } catch (e: Exception) {
-                Log.e("HealthConnect", "HealthConnectManager: Error reading steps data", e)
-                emptyList()
-            }
-        } ?: run {
-            Log.d("HealthConnect", "HealthConnectManager: Cannot read steps data, client is null")
-            emptyList()
-        }
+        Log.v("HealthConnect", "HealthConnectManager: Reading steps data from $start to $end")
+        return readData(StepsRecord::class, start, end)
     }
 
-    // Read sleep data
+    /**
+     * Reads [SleepSessionRecord] data from Health Connect within the specified time range.
+     * @param start The start [Instant] of the time range.
+     * @param end The end [Instant] of the time range.
+     * @return A list of [SleepSessionRecord]s, or an empty list if an error occurs or client is null.
+     */
     suspend fun readSleepData(start: Instant, end: Instant): List<SleepSessionRecord> {
-        return healthConnectClient?.let { client ->
-            val request = ReadRecordsRequest(
-                recordType = SleepSessionRecord::class,
-                timeRangeFilter = TimeRangeFilter.between(start, end)
-            )
-            client.readRecords(request).records
-        } ?: emptyList()
+        return readData(SleepSessionRecord::class, start, end)
     }
 
-    // Read heart rate data
+    /**
+     * Reads [HeartRateRecord] data from Health Connect within the specified time range.
+     * @param start The start [Instant] of the time range.
+     * @param end The end [Instant] of the time range.
+     * @return A list of [HeartRateRecord]s, or an empty list if an error occurs or client is null.
+     */
     suspend fun readHeartRateData(start: Instant, end: Instant): List<HeartRateRecord> {
-        return healthConnectClient?.let { client ->
-            val request = ReadRecordsRequest(
-                recordType = HeartRateRecord::class,
-                timeRangeFilter = TimeRangeFilter.between(start, end)
-            )
-            client.readRecords(request).records
-        } ?: emptyList()
+        return readData(HeartRateRecord::class, start, end)
     }
 
-    // Read exercise data
+    /**
+     * Reads [ExerciseSessionRecord] data from Health Connect within the specified time range.
+     * @param start The start [Instant] of the time range.
+     * @param end The end [Instant] of the time range.
+     * @return A list of [ExerciseSessionRecord]s, or an empty list if an error occurs or client is null.
+     */
     suspend fun readExerciseData(start: Instant, end: Instant): List<ExerciseSessionRecord> {
-        return healthConnectClient?.let { client ->
-            try {
-                val request = ReadRecordsRequest(
-                    recordType = ExerciseSessionRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
-                )
-                Log.d("HealthConnect", "HealthConnectManager: Created exercise request: $request")
-
-                val records = client.readRecords(request).records
-                Log.d("HealthConnect", "HealthConnectManager: Read ${records.size} exercise records")
-                records
-            } catch (e: Exception) {
-                Log.e("HealthConnect", "HealthConnectManager: Error reading exercise data", e)
-                emptyList()
-            }
-        } ?: run {
-            Log.d("HealthConnect", "HealthConnectManager: Cannot read exercise data, client is null")
-            emptyList()
-        }
+        // Log.v("HealthConnect", "HealthConnectManager: Reading exercise data from $start to $end") // Already logged in readData
+        return readData(ExerciseSessionRecord::class, start, end)
     }
 
-    // Read weight data
+    /**
+     * Reads [WeightRecord] data from Health Connect within the specified time range.
+     * @param start The start [Instant] of the time range.
+     * @param end The end [Instant] of the time range.
+     * @return A list of [WeightRecord]s, or an empty list if an error occurs or client is null.
+     */
     suspend fun readWeightData(start: Instant, end: Instant): List<WeightRecord> {
-        return healthConnectClient?.let { client ->
-            try {
-                val request = ReadRecordsRequest(
-                    recordType = WeightRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
-                )
-                Log.d("HealthConnect", "HealthConnectManager: Created weight request: $request")
-
-                val records = client.readRecords(request).records
-                Log.d("HealthConnect", "HealthConnectManager: Read ${records.size} weight records")
-                records
-            } catch (e: Exception) {
-                Log.e("HealthConnect", "HealthConnectManager: Error reading weight data", e)
-                emptyList()
-            }
-        } ?: run {
-            Log.d("HealthConnect", "HealthConnectManager: Cannot read weight data, client is null")
-            emptyList()
-        }
+        // Log.v("HealthConnect", "HealthConnectManager: Reading weight data from $start to $end") // Already logged in readData
+        return readData(WeightRecord::class, start, end)
     }
 
-    // Read blood pressure data
+    /**
+     * Reads [BloodPressureRecord] data from Health Connect within the specified time range.
+     * @param start The start [Instant] of the time range.
+     * @param end The end [Instant] of the time range.
+     * @return A list of [BloodPressureRecord]s, or an empty list if an error occurs or client is null.
+     */
     suspend fun readBloodPressureData(start: Instant, end: Instant): List<BloodPressureRecord> {
-        return healthConnectClient?.let { client ->
-            val request = ReadRecordsRequest(
-                recordType = BloodPressureRecord::class,
-                timeRangeFilter = TimeRangeFilter.between(start, end)
-            )
-            client.readRecords(request).records
-        } ?: emptyList()
+        return readData(BloodPressureRecord::class, start, end)
     }
 
-    // Read blood glucose data
+    /**
+     * Reads [BloodGlucoseRecord] data from Health Connect within the specified time range.
+     * @param start The start [Instant] of the time range.
+     * @param end The end [Instant] of the time range.
+     * @return A list of [BloodGlucoseRecord]s, or an empty list if an error occurs or client is null.
+     */
     suspend fun readBloodGlucoseData(start: Instant, end: Instant): List<BloodGlucoseRecord> {
-        return healthConnectClient?.let { client ->
-            val request = ReadRecordsRequest(
-                recordType = BloodGlucoseRecord::class,
-                timeRangeFilter = TimeRangeFilter.between(start, end)
-            )
-            client.readRecords(request).records
-        } ?: emptyList()
+        return readData(BloodGlucoseRecord::class, start, end)
     }
 
-    // Read body temperature data
+    /**
+     * Reads [BodyTemperatureRecord] data from Health Connect within the specified time range.
+     * @param start The start [Instant] of the time range.
+     * @param end The end [Instant] of the time range.
+     * @return A list of [BodyTemperatureRecord]s, or an empty list if an error occurs or client is null.
+     */
     suspend fun readBodyTemperatureData(start: Instant, end: Instant): List<BodyTemperatureRecord> {
-        return healthConnectClient?.let { client ->
-            val request = ReadRecordsRequest(
-                recordType = BodyTemperatureRecord::class,
-                timeRangeFilter = TimeRangeFilter.between(start, end)
-            )
-            client.readRecords(request).records
-        } ?: emptyList()
+        return readData(BodyTemperatureRecord::class, start, end)
     }
 
-    // Read oxygen saturation data
+    /**
+     * Reads [OxygenSaturationRecord] data from Health Connect within the specified time range.
+     * @param start The start [Instant] of the time range.
+     * @param end The end [Instant] of the time range.
+     * @return A list of [OxygenSaturationRecord]s, or an empty list if an error occurs or client is null.
+     */
     suspend fun readOxygenSaturationData(start: Instant, end: Instant): List<OxygenSaturationRecord> {
-        return healthConnectClient?.let { client ->
-            val request = ReadRecordsRequest(
-                recordType = OxygenSaturationRecord::class,
-                timeRangeFilter = TimeRangeFilter.between(start, end)
-            )
-            client.readRecords(request).records
-        } ?: emptyList()
+        return readData(OxygenSaturationRecord::class, start, end)
     }
 
-    // Read respiratory rate data
+    /**
+     * Reads [RespiratoryRateRecord] data from Health Connect within the specified time range.
+     * @param start The start [Instant] of the time range.
+     * @param end The end [Instant] of the time range.
+     * @return A list of [RespiratoryRateRecord]s, or an empty list if an error occurs or client is null.
+     */
     suspend fun readRespiratoryRateData(start: Instant, end: Instant): List<RespiratoryRateRecord> {
-        return healthConnectClient?.let { client ->
-            val request = ReadRecordsRequest(
-                recordType = RespiratoryRateRecord::class,
-                timeRangeFilter = TimeRangeFilter.between(start, end)
-            )
-            client.readRecords(request).records
-        } ?: emptyList()
+        return readData(RespiratoryRateRecord::class, start, end)
     }
 
-    // Read nutrition data
+    /**
+     * Reads [NutritionRecord] data from Health Connect within the specified time range.
+     * @param start The start [Instant] of the time range.
+     * @param end The end [Instant] of the time range.
+     * @return A list of [NutritionRecord]s, or an empty list if an error occurs or client is null.
+     */
     suspend fun readNutritionData(start: Instant, end: Instant): List<NutritionRecord> {
-        return healthConnectClient?.let { client ->
-            val request = ReadRecordsRequest(
-                recordType = NutritionRecord::class,
-                timeRangeFilter = TimeRangeFilter.between(start, end)
-            )
-            client.readRecords(request).records
-        } ?: emptyList()
+        return readData(NutritionRecord::class, start, end)
     }
 
-    // Read hydration data
+    /**
+     * Reads [HydrationRecord] data from Health Connect within the specified time range.
+     * @param start The start [Instant] of the time range.
+     * @param end The end [Instant] of the time range.
+     * @return A list of [HydrationRecord]s, or an empty list if an error occurs or client is null.
+     */
     suspend fun readHydrationData(start: Instant, end: Instant): List<HydrationRecord> {
-        return healthConnectClient?.let { client ->
-            val request = ReadRecordsRequest(
-                recordType = HydrationRecord::class,
-                timeRangeFilter = TimeRangeFilter.between(start, end)
-            )
-            client.readRecords(request).records
-        } ?: emptyList()
+        return readData(HydrationRecord::class, start, end)
     }
 
     /**
      * Reads in existing WeightRecord records.
      */
     suspend fun readWeightInputs(start: Instant, end: Instant): List<WeightRecord> {
-        Log.d("HealthConnect", "HealthConnectManager: Reading weight inputs from $start to $end")
-        return healthConnectClient?.let { client ->
-            try {
-                val request = ReadRecordsRequest(
-                    recordType = WeightRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
-                )
-                Log.d("HealthConnect", "HealthConnectManager: Created weight inputs request: $request")
-
-                val response = client.readRecords(request)
-                Log.d("HealthConnect", "HealthConnectManager: Read ${response.records.size} weight input records")
-                response.records
-            } catch (e: Exception) {
-                Log.e("HealthConnect", "HealthConnectManager: Error reading weight inputs", e)
-                emptyList()
-            }
-        } ?: run {
-            Log.d("HealthConnect", "HealthConnectManager: Cannot read weight inputs, client is null")
-            emptyList()
-        }
+        // Log.v("HealthConnect", "HealthConnectManager: Reading weight inputs from $start to $end") // Already logged in readData
+        return readData(WeightRecord::class, start, end)
     }
 
     /**
      * Obtains a list of ExerciseSessionRecord records in a specified time frame.
      */
     suspend fun readExerciseSessions(start: Instant, end: Instant): List<ExerciseSessionRecord> {
-        Log.d("HealthConnect", "HealthConnectManager: Reading exercise sessions from $start to $end")
-        return healthConnectClient?.let { client ->
-            try {
-                val request = ReadRecordsRequest(
-                    recordType = ExerciseSessionRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
-                )
-                Log.d("HealthConnect", "HealthConnectManager: Created exercise sessions request: $request")
-
-                val response = client.readRecords(request)
-                Log.d("HealthConnect", "HealthConnectManager: Read ${response.records.size} exercise session records")
-                response.records
-            } catch (e: Exception) {
-                Log.e("HealthConnect", "HealthConnectManager: Error reading exercise sessions", e)
-                emptyList()
-            }
-        } ?: run {
-            Log.d("HealthConnect", "HealthConnectManager: Cannot read exercise sessions, client is null")
-            emptyList()
-        }
+        // Log.v("HealthConnect", "HealthConnectManager: Reading exercise sessions from $start to $end") // Already logged in readData
+        return readData(ExerciseSessionRecord::class, start, end)
     }
 
     /**
      * Obtains a list of DistanceRecord records in a specified time frame.
      */
     suspend fun readDistanceData(start: Instant, end: Instant): List<DistanceRecord> {
-        Log.d("HealthConnect", "HealthConnectManager: Reading distance data from $start to $end")
-        return healthConnectClient?.let { client ->
-            try {
-                val request = ReadRecordsRequest(
-                    recordType = DistanceRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
-                )
-                Log.d("HealthConnect", "HealthConnectManager: Created distance data request: $request")
-
-                val response = client.readRecords(request)
-                Log.d("HealthConnect", "HealthConnectManager: Read ${response.records.size} distance records")
-                response.records
-            } catch (e: Exception) {
-                Log.e("HealthConnect", "HealthConnectManager: Error reading distance data", e)
-                emptyList()
-            }
-        } ?: run {
-            Log.d("HealthConnect", "HealthConnectManager: Cannot read distance data, client is null")
-            emptyList()
-        }
+        // Log.v("HealthConnect", "HealthConnectManager: Reading distance data from $start to $end") // Already logged in readData
+        return readData(DistanceRecord::class, start, end)
     }
 
     /**
      * Obtains a list of ExerciseSegment records in a specified time frame.
      */
     suspend fun readExerciseSegments(start: Instant, end: Instant): List<ExerciseSegment> {
-        Log.d("HealthConnect", "HealthConnectManager: Reading exercise segments from $start to $end")
+        Log.v("HealthConnect", "HealthConnectManager: Reading exercise segments from $start to $end")
         return healthConnectClient?.let { client ->
             try {
                 // ExerciseSegment is part of ExerciseSessionRecord, so we need to get them from there
@@ -391,14 +355,14 @@ class HealthConnectManager @Inject constructor(
                     segments.addAll(session.segments)
                 }
 
-                Log.d("HealthConnect", "HealthConnectManager: Read ${segments.size} exercise segments")
+                Log.v("HealthConnect", "HealthConnectManager: Read ${segments.size} exercise segments")
                 segments
             } catch (e: Exception) {
                 Log.e("HealthConnect", "HealthConnectManager: Error reading exercise segments", e)
                 emptyList()
             }
         } ?: run {
-            Log.d("HealthConnect", "HealthConnectManager: Cannot read exercise segments, client is null")
+            Log.v("HealthConnect", "HealthConnectManager: Cannot read exercise segments, client is null")
             emptyList()
         }
     }
@@ -407,26 +371,32 @@ class HealthConnectManager @Inject constructor(
      * Obtains a list of ExerciseRoute records in a specified time frame.
      */
     suspend fun readExerciseRoutes(start: Instant, end: Instant): List<ExerciseRoute> {
-        Log.d("HealthConnect", "HealthConnectManager: Reading exercise routes from $start to $end")
+        Log.v("HealthConnect", "HealthConnectManager: Reading exercise routes from $start to $end")
         return healthConnectClient?.let { client ->
             try {
+                // TODO("Implement ExerciseRoute reading when Health Connect API provides a clearer way or if custom logic is defined.")
                 // For now, return an empty list as we need to implement a proper way to get routes
                 // This will be implemented in a future update
-                Log.d("HealthConnect", "HealthConnectManager: Exercise routes not yet implemented")
+                Log.v("HealthConnect", "HealthConnectManager: Exercise routes not yet implemented")
                 emptyList()
             } catch (e: Exception) {
                 Log.e("HealthConnect", "HealthConnectManager: Error reading exercise routes", e)
                 emptyList()
             }
         } ?: run {
-            Log.d("HealthConnect", "HealthConnectManager: Cannot read exercise routes, client is null")
+            Log.v("HealthConnect", "HealthConnectManager: Cannot read exercise routes, client is null")
             emptyList()
         }
     }
 
-    // Get data for the last 30 days
+    /**
+     * Retrieves a comprehensive [HealthData] object containing various health metrics
+     * for the last [DEFAULT_DATA_PULL_DAYS] (typically 30 days).
+     * Returns an empty [HealthData] object if Health Connect client is not available.
+     * @return [HealthData] object with lists of records.
+     */
     suspend fun getLastMonthData(): HealthData {
-        Log.d("HealthConnect", "HealthConnectManager: Getting data for the last 30 days")
+        Log.v("HealthConnect", "HealthConnectManager: Getting data for the last 30 days")
 
         if (healthConnectClient == null) {
             Log.e("HealthConnect", "HealthConnectManager: Cannot get data, client is null")
@@ -434,15 +404,23 @@ class HealthConnectManager @Inject constructor(
         }
 
         val end = Instant.now()
-        val start = end.minusSeconds(30 * 24 * 60 * 60L) // 30 days in seconds
-        Log.d("HealthConnect", "HealthConnectManager: Time range: $start to $end")
+        val start = end.minusSeconds(DEFAULT_DATA_PULL_DAYS * 24 * 60 * 60L) // Use constant for 30 days in seconds
+        if (BuildConfig.DEBUG) {
+            Log.d("HealthConnect", "HealthConnectManager: Time range: $start to $end")
+        }
 
         return getHealthDataInRange(start, end)
     }
 
-    // Get data since a specific timestamp until now
+    /**
+     * Retrieves a comprehensive [HealthData] object containing various health metrics
+     * from a specified [since] timestamp up to the current time.
+     * Returns an empty [HealthData] object if Health Connect client is not available.
+     * @param since The start [Instant] from which to retrieve data.
+     * @return [HealthData] object with lists of records.
+     */
     suspend fun getHealthDataSince(since: Instant): HealthData {
-        Log.d("HealthConnect", "HealthConnectManager: Getting data since $since")
+        Log.v("HealthConnect", "HealthConnectManager: Getting data since $since")
 
         if (healthConnectClient == null) {
             Log.e("HealthConnect", "HealthConnectManager: Cannot get data, client is null")
@@ -450,21 +428,32 @@ class HealthConnectManager @Inject constructor(
         }
 
         val end = Instant.now()
-        Log.d("HealthConnect", "HealthConnectManager: Time range: $since to $end")
+        if (BuildConfig.DEBUG) {
+            Log.d("HealthConnect", "HealthConnectManager: Time range: $since to $end")
+        }
 
         return getHealthDataInRange(since, end)
     }
 
-    // Get data between specific start and end timestamps
+    /**
+     * Retrieves a comprehensive [HealthData] object containing various health metrics
+     * between the specified [start] and [end] timestamps.
+     * Returns an empty [HealthData] object if Health Connect client is not available.
+     * @param start The start [Instant] of the time range.
+     * @param end The end [Instant] of the time range.
+     * @return [HealthData] object with lists of records.
+     */
     suspend fun getHealthDataBetween(start: Instant, end: Instant): HealthData {
-        Log.d("HealthConnect", "HealthConnectManager: Getting data between $start and $end")
+        Log.v("HealthConnect", "HealthConnectManager: Getting data between $start and $end")
 
         if (healthConnectClient == null) {
             Log.e("HealthConnect", "HealthConnectManager: Cannot get data, client is null")
             return HealthData()
         }
 
-        Log.d("HealthConnect", "HealthConnectManager: Time range: $start to $end")
+        if (BuildConfig.DEBUG) {
+            Log.d("HealthConnect", "HealthConnectManager: Time range: $start to $end")
+        }
 
         return getHealthDataInRange(start, end)
     }
@@ -472,7 +461,7 @@ class HealthConnectManager @Inject constructor(
     // Get health data in a specific time range
     private suspend fun getHealthDataInRange(start: Instant, end: Instant): HealthData {
         try {
-            Log.d("HealthConnect", "HealthConnectManager: Reading health data from $start to $end")
+            Log.v("HealthConnect", "HealthConnectManager: Reading health data from $start to $end")
             val healthData = HealthData(
                 steps = readStepsData(start, end),
                 sleep = readSleepData(start, end),
@@ -490,7 +479,7 @@ class HealthConnectManager @Inject constructor(
                 nutrition = readNutritionData(start, end),
                 hydration = readHydrationData(start, end)
             )
-            Log.d("HealthConnect", "HealthConnectManager: Successfully read health data")
+            Log.v("HealthConnect", "HealthConnectManager: Successfully read health data")
             return healthData
         } catch (e: Exception) {
             Log.e("HealthConnect", "HealthConnectManager: Error reading health data", e)

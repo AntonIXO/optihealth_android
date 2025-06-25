@@ -50,6 +50,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch // Added import for Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -366,6 +367,62 @@ fun MainScreen(
             )
             Spacer(modifier = Modifier.height(16.dp)) // Added Spacer
             UsageStatsCard(supabaseClient = supabaseClient) // Added UsageStatsCard
+            Spacer(modifier = Modifier.height(16.dp)) // Spacer before new card
+            SoundLevelControlUI() // Added SoundLevelControlUI call
+        }
+    }
+}
+
+@Composable
+fun SoundLevelControlUI() {
+    val context = LocalContext.current
+    var soundMonitoringEnabled by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessLow
+                )
+            ),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Enable Sound Monitoring",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f)
+                )
+                Switch(
+                    checked = soundMonitoringEnabled,
+                    onCheckedChange = { newValue ->
+                        soundMonitoringEnabled = newValue
+                        Log.d("SoundLevelControlUI", "Sound monitoring toggled: $newValue")
+                        Toast.makeText(context, "Sound monitoring: $newValue", Toast.LENGTH_SHORT).show()
+                        // TODO: Placeholder for starting/stopping SoundLevelService
+                        // if (newValue) {
+                        //     val intent = Intent(context, SoundLevelService::class.java).apply {
+                        //         action = SoundLevelService.ACTION_START_SOUND_MONITORING
+                        //     }
+                        //     context.startService(intent)
+                        // } else {
+                        //     val intent = Intent(context, SoundLevelService::class.java).apply {
+                        //         action = SoundLevelService.ACTION_STOP_SOUND_MONITORING
+                        //     }
+                        //     context.startService(intent)
+                        // }
+                    }
+                )
+            }
         }
     }
 }
@@ -431,7 +488,12 @@ fun UsageStatsCard(supabaseClient: SupabaseClient) {
                                 return@launch
                             }
                             // IMPORTANT: Replace with your actual Metric Source ID from Supabase
-                            val metricSourceId = "YOUR_APP_USAGE_METRIC_SOURCE_ID" 
+                            // TODO: This metricSourceId is a placeholder from UI testing.
+                            // The actual UsageDataSyncWorker creates/retrieves the correct ID.
+                            // For a manual UI sync, this would need a more robust way to get the ID
+                            // (e.g., by querying the metric_sources table based on USAGE_SOURCE_IDENTIFIER
+                            // for the current user, similar to UsageDataSyncWorker).
+                            val metricSourceId = "YOUR_APP_USAGE_METRIC_SOURCE_ID"
 
                             try {
                                 val dataPoints = UsageStatsHelper.getAndProcessUsageStats(

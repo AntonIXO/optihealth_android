@@ -11,6 +11,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.devpins.pihs.health.HealthRepository
 
+/**
+ * A [CoroutineWorker] responsible for periodically syncing health data from Health Connect
+ * via the [HealthRepository] to a remote backend.
+ * This worker is managed by Hilt and is intended to be run daily.
+ *
+ * @param appContext The application context provided by Hilt.
+ * @param workerParams Parameters to configure the worker, provided by Hilt.
+ * @param healthRepository The repository used to access and sync health data.
+ */
 @HiltWorker
 class HealthDataSyncWorker @AssistedInject constructor(
     @Assisted appContext: Context,
@@ -25,11 +34,11 @@ class HealthDataSyncWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         return@withContext try {
-            Log.d(TAG, "Starting health data sync.")
-            // Ensure repository is initialized if it's not done elsewhere on app start
-            // healthRepository.initialize() // Consider if this is needed or done in Application class
-            healthRepository.syncHealthData() // This function should handle its own errors internally if possible
-            Log.d(TAG, "Health data sync completed successfully.")
+            Log.i(TAG, "Starting health data sync.")
+            // Assuming healthRepository.syncHealthData() handles its own internal errors and exceptions,
+            // returning a status or throwing a specific exception if the sync cannot be considered successful.
+            healthRepository.syncHealthData()
+            Log.i(TAG, "Health data sync completed successfully.")
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Error during health data sync.", e)

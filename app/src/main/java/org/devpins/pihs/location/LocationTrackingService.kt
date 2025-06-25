@@ -31,6 +31,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.devpins.pihs.MainActivity
 import org.devpins.pihs.R
+import org.devpins.pihs.sound.SoundLevelService // Added import
 import java.time.Instant
 import javax.inject.Inject
 
@@ -263,6 +264,14 @@ class LocationTrackingService : Service() {
                 Log.i(TAG, "Attempting to log significant location change to Supabase. Event data: $eventJsonString")
                 postgrest["events"].insert(event)
                 Log.d(TAG, "Successfully logged significant location change to Supabase")
+
+                // Trigger SoundLevelService to measure sound at this new location
+                val soundServiceIntent = Intent(applicationContext, SoundLevelService::class.java).apply {
+                    action = SoundLevelService.ACTION_MEASURE_SOUND_LOCATION_CHANGE
+                    putExtra("source_details", "Location change: ${String.format("%.5f", previousLocation.latitude)},${String.format("%.5f", previousLocation.longitude)} -> ${String.format("%.5f", newLocation.latitude)},${String.format("%.5f", newLocation.longitude)}")
+                }
+                applicationContext.startService(soundServiceIntent)
+                Log.i(TAG, "Sent intent to SoundLevelService for location-based sound measurement.")
             } catch (e: Exception) {
                 Log.e(TAG, "Error logging location change to Supabase. Attempted event data: $eventJsonString. User ID: ${auth.currentUserOrNull()?.id}", e)
             }
