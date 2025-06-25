@@ -91,11 +91,13 @@ object SoundLevelManager {
     ): PihsDataPoint {
         return PihsDataPoint(
             timestamp = timestamp,
-            metricName = eventType, // Using eventType as the metricName, e.g., "sound_level_periodic"
-            metricValue = soundLevel.toString(),
-            metricSourceId = metricSourceId,
-            userId = userId,
-            tags = listOf(eventType) // Using eventType also as a tag, or define specific tags like TAG_PERIODIC
+            metric_name = eventType, // Using eventType as the metricName, e.g., "sound_level_periodic"
+            value_numeric = soundLevel,
+            metric_source_id = metricSourceId,
+            user_id = userId,
+            tags = listOf(eventType),
+            unit = TODO(),
+            value_json = TODO() // Using eventType also as a tag, or define specific tags like TAG_PERIODIC
         )
     }
 

@@ -8,13 +8,14 @@ import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.gotrue.Auth
+import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.postgrest.Postgrest // For potential direct logging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.devpins.pihs.sound.SoundLevelManager
 import org.devpins.pihs.stats.PihsDataPoint // Ensure this path is correct
 import java.util.UUID
+import io.github.jan.supabase.postgrest.from
 
 @HiltWorker
 class SoundLevelWorker @AssistedInject constructor(
@@ -64,7 +65,7 @@ class SoundLevelWorker @AssistedInject constructor(
                     )
 
                     // Placeholder: Log data to Supabase
-                    logDataToSupabase(dataPoint, supabaseClient.from("pihs_data_points")) // Pass Postgrest for example
+//                    logDataToSupabase(dataPoint, supabaseClient.from("pihs_data_points")) // Pass Postgrest for example
                     success = true
                 } else {
                     Log.e(TAG, "Failed to measure sound level.")
@@ -105,14 +106,15 @@ class SoundLevelWorker @AssistedInject constructor(
 
     // Placeholder function to log data to Supabase
     private suspend fun logDataToSupabase(dataPoint: PihsDataPoint, table: Postgrest) {
-        try {
-            Log.i(TAG, "Logging PihsDataPoint to Supabase: ${dataPoint.metricName} - ${dataPoint.metricValue}")
-            // table.insert(dataPoint) // Actual call
-            Log.d(TAG, "Placeholder: Supabase logging complete for ${dataPoint.metricName}.")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error logging data to Supabase: ${e.message}", e)
-            // Rethrow or handle as per error policy for the worker
-        }
+//        try {
+//            Log.i(TAG, "Logging PihsDataPoint to Supabase: ${dataPoint.metricName} - ${dataPoint.metricValue}")
+//            // table.insert(dataPoint) // Actual call
+//            Log.d(TAG, "Placeholder: Supabase logging complete for ${dataPoint.metricName}.")
+//        } catch (e: Exception) {
+//            Log.e(TAG, "Error logging data to Supabase: ${e.message}", e)
+//            // Rethrow or handle as per error policy for the worker
+//        }
+        Log.i(TAG, "zaglishka")
     }
 
     companion object {

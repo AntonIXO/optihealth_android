@@ -32,6 +32,8 @@ import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 
+private const val DEFAULT_DATA_PULL_DAYS = 30L
+
 /**
  * Manages interactions with Health Connect, including checking availability, permissions,
  * and reading various health data records.
@@ -47,7 +49,6 @@ class HealthConnectManager @Inject constructor(
     /**
      * Default number of days to pull data for when getting "last month's data".
      */
-    private const val DEFAULT_DATA_PULL_DAYS = 30L
 
     // State flow to track availability of Health Connect
     private val _availability = MutableStateFlow(HealthConnectAvailability.UNKNOWN)

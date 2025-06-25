@@ -14,7 +14,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import dagger.hilt.android.AndroidEntryPoint
 import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.gotrue.Auth
+import io.github.jan.supabase.auth.Auth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -191,17 +191,17 @@ class SoundLevelService : Service() {
 
     private fun logSoundDataToSupabase(dataPoint: PihsDataPoint) {
         serviceScope.launch {
-            try {
-                // Placeholder: Actual Supabase logging to be implemented
-                Log.i(TAG, "Attempting to log to Supabase: ${dataPoint.metricName} - ${dataPoint.metricValue}")
-                // supabaseClient.from("pihs_data_points").insert(dataPoint) // Example actual call
-                Log.d(TAG, "logSoundDataToSupabase: Data: $dataPoint")
-                // Simulate network delay or operation
-                // kotlinx.coroutines.delay(1000)
-                Log.i(TAG, "Placeholder: Supabase logging complete for ${dataPoint.metricName}.")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error logging data to Supabase: ${e.message}", e)
-            }
+//            try {
+//                // Placeholder: Actual Supabase logging to be implemented
+//                Log.i(TAG, "Attempting to log to Supabase: ${dataPoint.metricName} - ${dataPoint.metricValue}")
+//                // supabaseClient.from("pihs_data_points").insert(dataPoint) // Example actual call
+//                Log.d(TAG, "logSoundDataToSupabase: Data: $dataPoint")
+//                // Simulate network delay or operation
+//                // kotlinx.coroutines.delay(1000)
+//                Log.i(TAG, "Placeholder: Supabase logging complete for ${dataPoint.metricName}.")
+//            } catch (e: Exception) {
+//                Log.e(TAG, "Error logging data to Supabase: ${e.message}", e)
+//            }
         }
     }
 

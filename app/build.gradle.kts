@@ -100,6 +100,9 @@ dependencies {
     // Google Play Services Location for Fused Location Provider
     implementation("com.google.android.gms:play-services-location:21.3.0")
 
+    implementation("com.github.luben:zstd-jni:1.5.7-3@aar")
+    testImplementation("com.github.luben:zstd-jni:1.5.7-3")
+
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
