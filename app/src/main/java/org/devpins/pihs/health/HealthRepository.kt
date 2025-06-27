@@ -31,7 +31,8 @@ class HealthRepository @Inject constructor(
     private val healthConnectManager: HealthConnectManager,
     private val healthDataTransformer: HealthDataTransformer,
     private val postgrest: Postgrest,
-    private val auth: Auth
+    private val auth: Auth,
+    private val dataUploaderService: org.devpins.pihs.data.remote.DataUploaderService // Added DataUploaderService
 ) {
     // State flow to track sync status
     private val _syncStatus = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
@@ -190,7 +191,8 @@ class HealthRepository @Inject constructor(
 
             // Upload to Supabase
             Log.d("HealthConnect", "HealthRepository: Uploading health data to Supabase")
-            uploadToSupabase(pihsHealthData)
+            // Pass the metricSourceInfo to the updated uploadToSupabase method
+            uploadToSupabase(pihsHealthData, metricSourceInfo)
             Log.d("HealthConnect", "HealthRepository: Uploaded health data to Supabase")
 
             // Check if sync was cancelled
@@ -277,7 +279,8 @@ class HealthRepository @Inject constructor(
 
             // Upload to Supabase
             Log.d("HealthConnect", "HealthRepository: Uploading health data to Supabase")
-            uploadToSupabase(pihsHealthData)
+            // Pass the metricSourceInfo to the updated uploadToSupabase method
+            uploadToSupabase(pihsHealthData, metricSourceInfo)
             Log.d("HealthConnect", "HealthRepository: Uploaded health data to Supabase")
 
             // Check if sync was cancelled
@@ -376,9 +379,126 @@ class HealthRepository @Inject constructor(
     )
 
     // Upload health data to Supabase
-    private suspend fun uploadToSupabase(pihsHealthData: PIHSHealthData) {
+    private suspend fun uploadToSupabase(
+        pihsHealthData: PIHSHealthData,
+        metricSourceInfo: MetricSourceInfo // Changed to pass MetricSourceInfo
+    ) {
+        val dataPointsToUpload = mutableListOf<org.devpins.pihs.data.model.DataPoint>()
+
+        // Transform applicable PIHSHealthData into DataPoint objects
+        dataPointsToUpload.addAll(transformPihsToDataPoints(pihsHealthData, metricSourceInfo.id))
+
+        if (dataPointsToUpload.isNotEmpty()) {
+            Log.d("HealthConnect", "HealthRepository: Attempting to upload ${dataPointsToUpload.size} data points via DataUploaderService.")
+            when (val result = dataUploaderService.uploadDataPoints(dataPointsToUpload)) {
+                is org.devpins.pihs.data.remote.UploadResult.Success -> {
+                    Log.i(
+                        "HealthConnect",
+                        "DataUploaderService success: ${result.response.message}, " +
+                                "Received: ${result.response.receivedCount}, " +
+                                "Inserted: ${result.response.insertedCount}"
+                    )
+                    // Potentially update UI or log specific counts if needed
+                }
+                is org.devpins.pihs.data.remote.UploadResult.Failure -> {
+                    Log.e("HealthConnect", "DataUploaderService failure: ${result.errorMessage}", result.exception)
+                    // Throw an exception to be caught by the calling sync function,
+                    // which will set SyncStatus.Error
+                    throw result.exception ?: RuntimeException("DataUploaderService failed: ${result.errorMessage}")
+                }
+            }
+        } else {
+            Log.d("HealthConnect", "HealthRepository: No new data points to upload via DataUploaderService.")
+        }
+
+        // --- Handle data types that go to the 'events' table (Exercise, Nutrition) using existing Postgrest logic ---
+        // This part remains similar to the original uploadToSupabase, but only for event-like data.
+        // The user_id and metric_source_id are still needed here.
+        val userId = auth.currentUserOrNull()?.id
+        if (userId == null) {
+            Log.e("HealthConnect", "HealthRepository: User ID is null, cannot proceed with event data upload.")
+            throw IllegalStateException("User not authenticated. Cannot sync event data.")
+        }
+        // Note: metricSourceInfo.id is the metric_source_id for health_connect_android.
+        // If events need a different source_id, this needs adjustment. For now, assume they relate to the same source.
+
+        // Upload exercise data to events table
+        if (pihsHealthData.exercise.isNotEmpty()) {
+            Log.d("HealthConnect", "HealthRepository: Uploading ${pihsHealthData.exercise.size} exercise records to events table (Postgrest)")
+            pihsHealthData.exercise.forEach { exerciseRecord ->
+                // Calculate duration in minutes
+                val startInstant = Instant.parse(exerciseRecord.startTime)
+                val endInstant = Instant.parse(exerciseRecord.endTime)
+                val durationMinutes = (endInstant.epochSecond - startInstant.epochSecond) / 60
+
+                // Create properties JSON object
+                val properties = buildJsonObject {
+                    put("calories", exerciseRecord.calories)
+                    put("exerciseType", exerciseRecord.exerciseType)
+                    // Add other relevant exercise properties if needed
+                }
+
+                val event = buildJsonObject {
+                    put("user_id", userId)
+                    put("event_name", exerciseRecord.title.ifEmpty { exerciseRecord.exerciseType })
+                    put("start_timestamp", exerciseRecord.startTime)
+                    put("end_timestamp", exerciseRecord.endTime)
+                    put("duration_minutes", durationMinutes)
+                    put("description", exerciseRecord.notes)
+                    put("category", "exercise")
+                    put("properties", properties)
+                    // Consider adding metric_source_id if your 'events' table schema supports it
+                    // put("metric_source_id", metricSourceInfo.id)
+                }
+                try {
+                    postgrest["events"].insert(event)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading exercise event for user $userId, event: $event", e)
+                    // Continue with the next record
+                }
+            }
+            Log.d("HealthConnect", "HealthRepository: Uploaded exercise records to events table (Postgrest)")
+        }
+
+        // Upload nutrition data to events table
+        pihsHealthData.nutrition.forEach { nutritionRecord ->
+            if (nutritionRecord.calories > 0 || nutritionRecord.protein > 0 || nutritionRecord.fat > 0 || nutritionRecord.carbs > 0) {
+                val startInstant = Instant.parse(nutritionRecord.startTime)
+                val endInstant = Instant.parse(nutritionRecord.endTime)
+                val durationMinutes = (endInstant.epochSecond - startInstant.epochSecond) / 60
+
+                val properties = buildJsonObject {
+                    put("calories", nutritionRecord.calories)
+                    put("protein", nutritionRecord.protein)
+                    put("fat", nutritionRecord.fat)
+                    put("carbs", nutritionRecord.carbs)
+                }
+
+                val event = buildJsonObject {
+                    put("user_id", userId)
+                    put("event_name", "Meal - ${nutritionRecord.name.ifEmpty { "Unspecified" }}")
+                    put("start_timestamp", nutritionRecord.startTime)
+                    put("end_timestamp", nutritionRecord.endTime)
+                    put("duration_minutes", durationMinutes)
+                    put("category", "diet")
+                    put("properties", properties)
+                     // Consider adding metric_source_id if your 'events' table schema supports it
+                    // put("metric_source_id", metricSourceInfo.id)
+                }
+                try {
+                    postgrest["events"].insert(event)
+                } catch (e: Exception) {
+                    Log.e("HealthConnect", "HealthRepository: Error uploading nutrition event for user $userId, event: $event", e)
+                }
+            }
+        }
+        Log.d("HealthConnect", "HealthRepository: Processed nutrition records for events table (Postgrest)")
+
+
+        // Original content of uploadToSupabase is largely replaced or moved to transformPihsToDataPoints
+        // and the event handling part above.
         try {
-            Log.d("HealthConnect", "HealthRepository: Uploading health data to Supabase")
+            Log.d("HealthConnect", "HealthRepository: Health data processing (points and events) complete.")
 
             // Get the current user ID
             val userId = auth.currentUserOrNull()?.id
@@ -468,590 +588,7 @@ class HealthRepository @Inject constructor(
         }
     }
 
-    // Get or create a metric source for Health Connect
-    private suspend fun getOrCreateMetricSource(userId: String): MetricSource {
-        try {
-            // Try to find an existing Health Connect metric source
-            val existingSources = postgrest["metric_sources"]
-                .select {
-                    filter {
-                        eq("user_id", userId)
-                        eq("source_identifier", "health_connect_android")
-                    }
-                }
-                .decodeList<MetricSource>()
-
-            // If a source exists, return it
-            if (existingSources.isNotEmpty()) {
-                val source = existingSources.first()
-                Log.d("HealthConnect", "HealthRepository: Found existing metric source with ID: ${source.id}, last synced at: ${source.last_synced_at}")
-                return source
-            }
-
-            // Otherwise, create a new metric source
-            Log.d("HealthConnect", "HealthRepository: Creating new metric source for Health Connect")
-            val currentTime = Instant.now().toString()
-            val newSource = buildJsonObject {
-                put("user_id", userId)
-                put("source_identifier", "health_connect_android")
-                put("source_name", "Android Health Connect")
-                put("source_type", "mobile_sync")
-                put("is_active", true)
-                put("last_synced_at", currentTime)
-            }
-
-            val result = postgrest["metric_sources"].insert(newSource).decodeSingle<MetricSource>()
-            Log.d("HealthConnect", "HealthRepository: Created new metric source with ID: ${result.id}, last synced at: ${result.last_synced_at}")
-            return result
-        } catch (e: Exception) {
-            Log.e("HealthConnect", "HealthRepository: Error getting or creating metric source", e)
-            throw e
-        }
-    }
-
-    // Upload other health metrics to data_points table
-    private suspend fun uploadMetricsToDataPoints(pihsHealthData: PIHSHealthData, userId: String, metricSourceId: Long) {
-        // Upload sleep metrics
-        pihsHealthData.sleep.forEach { sleepRecord ->
-            // Total sleep duration
-            if (sleepRecord.totalSleepDurationMinutes > 0) {
-                val totalSleepDurationPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", sleepRecord.endTime)
-                    put("metric_name", "total_sleep_duration_minutes")
-                    put("value_numeric", sleepRecord.totalSleepDurationMinutes)
-                    put("unit", "minutes")
-                }
-                try {
-                    postgrest["data_points"].insert(totalSleepDurationPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading total_sleep_duration_minutes for user $userId, record: $sleepRecord", e)
-                }
-            }
-
-            // Deep sleep duration
-            if (sleepRecord.deepSleepDurationMinutes > 0) {
-                val deepSleepDurationPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", sleepRecord.endTime)
-                    put("metric_name", "deep_sleep_duration_minutes")
-                    put("value_numeric", sleepRecord.deepSleepDurationMinutes)
-                    put("unit", "minutes")
-                }
-                try {
-                    postgrest["data_points"].insert(deepSleepDurationPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading deep_sleep_duration_minutes for user $userId, record: $sleepRecord", e)
-                }
-            }
-
-            // Light sleep duration
-            if (sleepRecord.lightSleepDurationMinutes > 0) {
-                val lightSleepDurationPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", sleepRecord.endTime)
-                    put("metric_name", "light_sleep_duration_minutes")
-                    put("value_numeric", sleepRecord.lightSleepDurationMinutes)
-                    put("unit", "minutes")
-                }
-                try {
-                    postgrest["data_points"].insert(lightSleepDurationPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading light_sleep_duration_minutes for user $userId, record: $sleepRecord", e)
-                }
-            }
-
-            // REM sleep duration
-            if (sleepRecord.remSleepDurationMinutes > 0) {
-                val remSleepDurationPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", sleepRecord.endTime)
-                    put("metric_name", "rem_sleep_duration_minutes")
-                    put("value_numeric", sleepRecord.remSleepDurationMinutes)
-                    put("unit", "minutes")
-                }
-                try {
-                    postgrest["data_points"].insert(remSleepDurationPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading rem_sleep_duration_minutes for user $userId, record: $sleepRecord", e)
-                }
-            }
-
-            // Sleep score (if available)
-            if (sleepRecord.sleepScore > 0) {
-                val sleepScorePoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", sleepRecord.endTime)
-                    put("metric_name", "sleep_score")
-                    put("value_numeric", sleepRecord.sleepScore)
-                    put("unit", "score")
-                }
-                try {
-                    postgrest["data_points"].insert(sleepScorePoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading sleep_score for user $userId, record: $sleepRecord", e)
-                }
-            }
-
-            // Sleep efficiency
-            if (sleepRecord.sleepEfficiencyPercentage > 0) {
-                val sleepEfficiencyPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", sleepRecord.endTime)
-                    put("metric_name", "sleep_efficiency_percentage")
-                    put("value_numeric", sleepRecord.sleepEfficiencyPercentage)
-                    put("unit", "percent")
-                }
-                try {
-                    postgrest["data_points"].insert(sleepEfficiencyPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading sleep_efficiency_percentage for user $userId, record: $sleepRecord", e)
-                }
-            }
-
-            // Sleep latency
-            if (sleepRecord.sleepLatencyMinutes > 0) {
-                val sleepLatencyPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", sleepRecord.endTime)
-                    put("metric_name", "sleep_latency_minutes")
-                    put("value_numeric", sleepRecord.sleepLatencyMinutes)
-                    put("unit", "minutes")
-                }
-                try {
-                    postgrest["data_points"].insert(sleepLatencyPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading sleep_latency_minutes for user $userId, record: $sleepRecord", e)
-                }
-            }
-
-            // Awakenings count
-            if (sleepRecord.awakeningsCount > 0) {
-                val awakeningsCountPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", sleepRecord.endTime)
-                    put("metric_name", "awakenings_count")
-                    put("value_numeric", sleepRecord.awakeningsCount.toDouble())
-                    put("unit", "count")
-                }
-                try {
-                    postgrest["data_points"].insert(awakeningsCountPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading awakenings_count for user $userId, record: $sleepRecord", e)
-                }
-            }
-
-            // Time in bed
-            if (sleepRecord.timeInBedMinutes > 0) {
-                val timeInBedPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", sleepRecord.endTime)
-                    put("metric_name", "time_in_bed_minutes")
-                    put("value_numeric", sleepRecord.timeInBedMinutes)
-                    put("unit", "minutes")
-                }
-                try {
-                    postgrest["data_points"].insert(timeInBedPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading time_in_bed_minutes for user $userId, record: $sleepRecord", e)
-                }
-            }
-        }
-
-        // Upload heart rate data
-        pihsHealthData.heartRate.forEach { hrRecord ->
-            hrRecord.samples.forEach { sample ->
-                if (sample.beatsPerMinute > 0) {
-                    val dataPoint = buildJsonObject {
-                        put("user_id", userId)
-                        put("metric_source_id", metricSourceId)
-                        put("timestamp", sample.time)
-                        put("metric_name", "heartrate_timeseries_bpm")
-                        put("value_numeric", sample.beatsPerMinute.toDouble())
-                        put("unit", "bpm")
-                    }
-                    try {
-                        postgrest["data_points"].insert(dataPoint)
-                    } catch (e: Exception) {
-                        Log.e("HealthConnect", "HealthRepository: Error uploading heartrate_timeseries_bpm for user $userId, sample: $sample", e)
-                    }
-                }
-            }
-        }
-
-        // Upload blood pressure data
-        pihsHealthData.bloodPressure.forEach { bpRecord ->
-            // Only upload if both systolic and diastolic are > 0
-            if (bpRecord.systolic > 0 && bpRecord.diastolic > 0) {
-                // Systolic
-                val systolicPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", bpRecord.time)
-                    put("metric_name", "bloodpressure_systolic_mmhg")
-                    put("value_numeric", bpRecord.systolic)
-                    put("unit", "mmHg")
-                }
-                try {
-                    postgrest["data_points"].insert(systolicPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading bloodpressure_systolic_mmhg for user $userId, record: $bpRecord", e)
-                }
-
-                // Diastolic
-                val diastolicPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", bpRecord.time)
-                    put("metric_name", "bloodpressure_diastolic_mmhg")
-                    put("value_numeric", bpRecord.diastolic)
-                    put("unit", "mmHg")
-                }
-                try {
-                    postgrest["data_points"].insert(diastolicPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading bloodpressure_diastolic_mmhg for user $userId, record: $bpRecord", e)
-                }
-            }
-        }
-
-        // Upload blood glucose data
-        pihsHealthData.bloodGlucose.forEach { bgRecord ->
-            if (bgRecord.level > 0) {
-                val dataPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", bgRecord.time)
-                    put("metric_name", "bloodglucose_level_mmolL")
-                    put("value_numeric", bgRecord.level)
-                    put("unit", "mmol/L")
-                    put("value_json", buildJsonObject {
-                        put("specimen_source", bgRecord.specimenSource)
-                        put("meal_type", bgRecord.mealType)
-                    })
-                }
-                try {
-                    postgrest["data_points"].insert(dataPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading bloodglucose_level_mmolL for user $userId, record: $bgRecord", e)
-                }
-            }
-        }
-
-        // Upload body temperature data
-        pihsHealthData.bodyTemperature.forEach { tempRecord ->
-            if (tempRecord.temperature > 0) {
-                val dataPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", tempRecord.time)
-                    put("metric_name", "bodytemperature_reading_celsius")
-                    put("value_numeric", tempRecord.temperature)
-                    put("unit", "celsius")
-                    put("value_json", buildJsonObject {
-                        put("measurement_location", tempRecord.measurementLocation)
-                    })
-                }
-                try {
-                    postgrest["data_points"].insert(dataPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading bodytemperature_reading_celsius for user $userId, record: $tempRecord", e)
-                }
-            }
-        }
-
-        // Upload oxygen saturation data
-        pihsHealthData.oxygenSaturation.forEach { o2Record ->
-            if (o2Record.saturation > 0) {
-                val dataPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", o2Record.time)
-                    put("metric_name", "spo2_reading_percentage")
-                    put("value_numeric", o2Record.saturation)
-                    put("unit", "percent")
-                }
-                try {
-                    postgrest["data_points"].insert(dataPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading spo2_reading_percentage for user $userId, record: $o2Record", e)
-                }
-            }
-        }
-
-        // Upload respiratory rate data
-        pihsHealthData.respiratoryRate.forEach { rrRecord ->
-            if (rrRecord.rate > 0) {
-                val dataPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", rrRecord.time)
-                    put("metric_name", "respiratoryrate_reading_bpm")
-                    put("value_numeric", rrRecord.rate)
-                    put("unit", "breaths_per_minute")
-                }
-                try {
-                    postgrest["data_points"].insert(dataPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading respiratoryrate_reading_bpm for user $userId, record: $rrRecord", e)
-                }
-            }
-        }
-
-        // Upload steps data
-        pihsHealthData.steps.forEach { stepsRecord ->
-            if (stepsRecord.count > 0) {
-                val dataPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", stepsRecord.endTime)
-                    put("metric_name", "activity_steps_total_count")
-                    put("value_numeric", stepsRecord.count.toDouble())
-                    put("unit", "count")
-                }
-                try {
-                    postgrest["data_points"].insert(dataPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading activity_steps_total_count for user $userId, record: $stepsRecord", e)
-                }
-            }
-        }
-
-        // Upload exercise metrics to data_points table
-        pihsHealthData.exercise.forEach { exerciseRecord ->
-            // Upload workout duration
-            if (exerciseRecord.durationMinutes > 0) {
-                val workoutDurationPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", exerciseRecord.endTime)
-                    put("metric_name", "workout_duration_minutes")
-                    put("value_numeric", exerciseRecord.durationMinutes)
-                    put("unit", "minutes")
-                }
-                try {
-                    postgrest["data_points"].insert(workoutDurationPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading workout_duration_minutes for user $userId, record: $exerciseRecord", e)
-                }
-            }
-
-            // Upload workout calories burned
-            if (exerciseRecord.calories > 0) {
-                val workoutCaloriesPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", exerciseRecord.endTime)
-                    put("metric_name", "workout_calories_burned_kcal")
-                    put("value_numeric", exerciseRecord.calories)
-                    put("unit", "kcal")
-                }
-                try {
-                    postgrest["data_points"].insert(workoutCaloriesPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading workout_calories_burned_kcal for user $userId, record: $exerciseRecord", e)
-                }
-            }
-
-            // Upload workout distance
-            if (exerciseRecord.distanceKm > 0) {
-                val workoutDistancePoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", exerciseRecord.endTime)
-                    put("metric_name", "workout_distance_km")
-                    put("value_numeric", exerciseRecord.distanceKm)
-                    put("unit", "km")
-                }
-                try {
-                    postgrest["data_points"].insert(workoutDistancePoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading workout_distance_km for user $userId, record: $exerciseRecord", e)
-                }
-            }
-
-            // Upload workout average heart rate
-            if (exerciseRecord.averageHeartRateBpm > 0) {
-                val workoutAvgHrPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", exerciseRecord.endTime)
-                    put("metric_name", "workout_average_heart_rate_bpm")
-                    put("value_numeric", exerciseRecord.averageHeartRateBpm)
-                    put("unit", "bpm")
-                }
-                try {
-                    postgrest["data_points"].insert(workoutAvgHrPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading workout_average_heart_rate_bpm for user $userId, record: $exerciseRecord", e)
-                }
-            }
-
-            // Upload workout max heart rate
-            if (exerciseRecord.maxHeartRateBpm > 0) {
-                val workoutMaxHrPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", exerciseRecord.endTime)
-                    put("metric_name", "workout_max_heart_rate_bpm")
-                    put("value_numeric", exerciseRecord.maxHeartRateBpm)
-                    put("unit", "bpm")
-                }
-                try {
-                    postgrest["data_points"].insert(workoutMaxHrPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading workout_max_heart_rate_bpm for user $userId, record: $exerciseRecord", e)
-                }
-            }
-
-            // Upload workout type as text
-            val workoutTypePoint = buildJsonObject {
-                put("user_id", userId)
-                put("metric_source_id", metricSourceId)
-                put("timestamp", exerciseRecord.endTime)
-                put("metric_name", "workout_type")
-                put("value_text", exerciseRecord.exerciseType)
-            }
-            try {
-                postgrest["data_points"].insert(workoutTypePoint)
-            } catch (e: Exception) {
-                Log.e("HealthConnect", "HealthRepository: Error uploading workout_type for user $userId, record: $exerciseRecord", e)
-            }
-
-            // Upload workout intensity if available
-            if (exerciseRecord.intensityManual > 0) {
-                val workoutIntensityPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", exerciseRecord.endTime)
-                    put("metric_name", "workout_intensity_manual")
-                    put("value_numeric", exerciseRecord.intensityManual.toDouble())
-                    put("unit", "scale")
-                }
-                try {
-                    postgrest["data_points"].insert(workoutIntensityPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading workout_intensity_manual for user $userId, record: $exerciseRecord", e)
-                }
-            }
-
-            // Upload steps count from workout if available
-            if (exerciseRecord.stepsCount > 0) {
-                val workoutStepsPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", exerciseRecord.endTime)
-                    put("metric_name", "steps_count")
-                    put("value_numeric", exerciseRecord.stepsCount.toDouble())
-                    put("unit", "count")
-                }
-                try {
-                    postgrest["data_points"].insert(workoutStepsPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading steps_count for user $userId, record: $exerciseRecord", e)
-                }
-            }
-
-            // Upload active energy from workout if available
-            if (exerciseRecord.activeEnergyKcal > 0) {
-                val activeEnergyPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", exerciseRecord.endTime)
-                    put("metric_name", "active_energy_kcal")
-                    put("value_numeric", exerciseRecord.activeEnergyKcal)
-                    put("unit", "kcal")
-                }
-                try {
-                    postgrest["data_points"].insert(activeEnergyPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading active_energy_kcal for user $userId, record: $exerciseRecord", e)
-                }
-            }
-
-            // Upload exercise minutes total
-            if (exerciseRecord.durationMinutes > 0) {
-                val exerciseMinutesPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", exerciseRecord.endTime)
-                    put("metric_name", "exercise_minutes_total")
-                    put("value_numeric", exerciseRecord.durationMinutes)
-                    put("unit", "minutes")
-                }
-                try {
-                    postgrest["data_points"].insert(exerciseMinutesPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading exercise_minutes_total for user $userId, record: $exerciseRecord", e)
-                }
-            }
-        }
-
-        // Upload nutrition data to events table
-        pihsHealthData.nutrition.forEach { nutritionRecord ->
-            // Skip if all nutrition values are 0
-            if (nutritionRecord.calories > 0 || nutritionRecord.protein > 0 || nutritionRecord.fat > 0 || nutritionRecord.carbs > 0) {
-                // Calculate duration in minutes
-                val startInstant = Instant.parse(nutritionRecord.startTime)
-                val endInstant = Instant.parse(nutritionRecord.endTime)
-                val durationMinutes = (endInstant.epochSecond - startInstant.epochSecond) / 60
-
-                // Create properties JSON object with nutrition details
-                val properties = buildJsonObject {
-                    put("calories", nutritionRecord.calories)
-                    put("protein", nutritionRecord.protein)
-                    put("fat", nutritionRecord.fat)
-                    put("carbs", nutritionRecord.carbs)
-                }
-
-                val event = buildJsonObject {
-                    put("user_id", userId)
-                    put("event_name", "Meal - ${nutritionRecord.name.ifEmpty { "Unspecified" }}")
-                    put("start_timestamp", nutritionRecord.startTime)
-                    put("end_timestamp", nutritionRecord.endTime)
-                    put("duration_minutes", durationMinutes)
-                    put("category", "diet")
-                    put("properties", properties)
-                }
-                try {
-                    postgrest["events"].insert(event)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading nutrition event for user $userId, event: $event", e)
-                }
-            }
-        }
-
-        // Upload hydration data to data_points table
-        pihsHealthData.hydration.forEach { hydrationRecord ->
-            if (hydrationRecord.volume > 0) {
-                val dataPoint = buildJsonObject {
-                    put("user_id", userId)
-                    put("metric_source_id", metricSourceId)
-                    put("timestamp", hydrationRecord.endTime)
-                    put("metric_name", "hydration_intake_liters")
-                    put("value_numeric", hydrationRecord.volume)
-                    put("unit", "L")
-                }
-                try {
-                    postgrest["data_points"].insert(dataPoint)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading hydration_intake_liters for user $userId, record: $hydrationRecord", e)
-                }
-            }
-        }
-    }
-}
-
-// Sync status
+    // New method to transform PIHSHealthData to List<DataPoint>
 sealed class SyncStatus {
     object Idle : SyncStatus()
     object Syncing : SyncStatus()
