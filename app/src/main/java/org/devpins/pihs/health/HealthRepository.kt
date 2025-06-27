@@ -495,100 +495,241 @@ class HealthRepository @Inject constructor(
         Log.d("HealthConnect", "HealthRepository: Processed nutrition records for events table (Postgrest)")
 
 
-        // Original content of uploadToSupabase is largely replaced or moved to transformPihsToDataPoints
-        // and the event handling part above.
-        try {
-            Log.d("HealthConnect", "HealthRepository: Health data processing (points and events) complete.")
+        // This try-catch block and its contents were remnants of the old upload logic and are now redundant.
+        // The calls to getOrCreateMetricSource and uploadMetricsToDataPoints were causing errors as these methods were deleted.
+        // Data point uploads are handled by DataUploaderService, and event uploads are handled above this section.
+        // Log.d("HealthConnect", "HealthRepository: Health data processing (points and events) complete via new method.")
+    } // This closes uploadToSupabase method
 
-            // Get the current user ID
-            val userId = auth.currentUserOrNull()?.id
-            if (userId == null) {
-                // If we can't get the user ID, we should not proceed with the sync
-                Log.e("HealthConnect", "HealthRepository: User ID is null, cannot proceed with sync")
-                throw IllegalStateException("User not authenticated. Cannot sync health data.")
-            }
-            Log.d("HealthConnect", "HealthRepository: User ID: $userId")
+    // New method to transform PIHSHealthData to List<DataPoint>
+private fun transformPihsToDataPoints(
+    pihsHealthData: PIHSHealthData,
+    metricSourceId: Long
+): List<org.devpins.pihs.data.model.DataPoint> {
+    val dataPoints = mutableListOf<org.devpins.pihs.data.model.DataPoint>()
+    // val currentTimestampForTags = org.devpins.pihs.data.model.DataPoint( // This was a placeholder, not actively used.
+    // metricSourceId = null, timestamp = "", metricName = "", valueNumeric = null, valueText = null, valueJson = null, unit = null, tags = null
+    // ).timestamp
 
-            // Get or create a metric source for Health Connect
-            val metricSource = getOrCreateMetricSource(userId)
-            val metricSourceId = metricSource.id
-            Log.d("HealthConnect", "HealthRepository: Metric Source ID: $metricSourceId")
-
-            // Upload each data type separately to appropriate tables
-
-            // Upload weight data to data_points table
-            if (pihsHealthData.weight.isNotEmpty()) {
-                Log.d("HealthConnect", "HealthRepository: Uploading ${pihsHealthData.weight.size} weight records")
-                pihsHealthData.weight.forEach { weightRecord ->
-                    // Skip if weight is 0
-                    if (weightRecord.weight > 0) {
-                        val dataPoint = buildJsonObject {
-                            put("user_id", userId)
-                            put("metric_source_id", metricSourceId)
-                            put("timestamp", weightRecord.time)
-                            put("metric_name", "body_weight_mass_kg")
-                            put("value_numeric", weightRecord.weight)
-                            put("unit", "kg")
-                        }
-                        try {
-                            postgrest["data_points"].insert(dataPoint)
-                        } catch (e: Exception) {
-                            Log.e("HealthConnect", "HealthRepository: Error uploading weight record for user $userId, data: $dataPoint", e)
-                            // Continue with the next record
-                        }
-                    } else {
-                        Log.d("HealthConnect", "HealthRepository: Skipping weight record with value 0")
-                    }
-                }
-                Log.d("HealthConnect", "HealthRepository: Uploaded weight records to data_points table")
-            }
-
-            // Upload exercise data to events table
-            if (pihsHealthData.exercise.isNotEmpty()) {
-                Log.d("HealthConnect", "HealthRepository: Uploading ${pihsHealthData.exercise.size} exercise records")
-                pihsHealthData.exercise.forEach { exerciseRecord ->
-                    // Calculate duration in minutes
-                    val startInstant = Instant.parse(exerciseRecord.startTime)
-                    val endInstant = Instant.parse(exerciseRecord.endTime)
-                    val durationMinutes = (endInstant.epochSecond - startInstant.epochSecond) / 60
-
-                    // Create properties JSON object
-                    val properties = buildJsonObject {
-                        put("calories", exerciseRecord.calories)
-                        put("exerciseType", exerciseRecord.exerciseType)
-                    }
-
-                    val event = buildJsonObject {
-                        put("user_id", userId)
-                        put("event_name", exerciseRecord.title.ifEmpty { exerciseRecord.exerciseType })
-                        put("start_timestamp", exerciseRecord.startTime)
-                        put("end_timestamp", exerciseRecord.endTime)
-                        put("duration_minutes", durationMinutes)
-                        put("description", exerciseRecord.notes)
-                        put("category", "exercise")
-                        put("properties", properties)
-                    }
-                    try {
-                        postgrest["events"].insert(event)
-                    } catch (e: Exception) {
-                        Log.e("HealthConnect", "HealthRepository: Error uploading exercise event for user $userId, event: $event", e)
-                        // Continue with the next record
-                    }
-                }
-                Log.d("HealthConnect", "HealthRepository: Uploaded exercise records to events table")
-            }
-
-            // Upload other health metrics to data_points table
-            uploadMetricsToDataPoints(pihsHealthData, userId, metricSourceId)
-
-            Log.d("HealthConnect", "HealthRepository: Completed uploading health data to Supabase")
-        } catch (e: Exception) {
-            Log.e("HealthConnect", "HealthRepository: Error uploading to Supabase", e)
-            throw e
+    // Steps
+    pihsHealthData.steps.forEach { stepData ->
+        if (stepData.count > 0) {
+            dataPoints.add(
+                org.devpins.pihs.data.model.DataPoint(
+                    metricSourceId = metricSourceId,
+                    timestamp = stepData.endTime, // Standard Health Connect practice: timestamp at end of interval
+                    metricName = "activity_steps_total_count",
+                    valueNumeric = stepData.count.toDouble(),
+                    valueText = null,
+                    valueJson = null,
+                    unit = "count",
+                    tags = null
+                )
+            )
         }
     }
 
-    // New method to transform PIHSHealthData to List<DataPoint>
+    // Weight
+    pihsHealthData.weight.forEach { weightData ->
+        if (weightData.weight > 0) {
+            dataPoints.add(
+                org.devpins.pihs.data.model.DataPoint(
+                    metricSourceId = metricSourceId,
+                    timestamp = weightData.time,
+                    metricName = "body_weight_mass_kg",
+                    valueNumeric = weightData.weight,
+                    valueText = null,
+                    valueJson = null,
+                    unit = "kg",
+                    tags = null
+                )
+            )
+        }
+    }
+
+    // Heart Rate Samples
+    pihsHealthData.heartRate.forEach { hrData ->
+        hrData.samples.forEach { sample ->
+            if (sample.beatsPerMinute > 0) {
+                dataPoints.add(
+                    org.devpins.pihs.data.model.DataPoint(
+                        metricSourceId = metricSourceId,
+                        timestamp = sample.time,
+                        metricName = "heartrate_timeseries_bpm",
+                        valueNumeric = sample.beatsPerMinute.toDouble(),
+                        valueText = null,
+                        valueJson = null,
+                        unit = "bpm",
+                        tags = null
+                    )
+                )
+            }
+        }
+    }
+
+    // Blood Pressure
+    pihsHealthData.bloodPressure.forEach { bpData ->
+        if (bpData.systolic > 0 && bpData.diastolic > 0) {
+            dataPoints.add(
+                org.devpins.pihs.data.model.DataPoint(
+                    metricSourceId = metricSourceId,
+                    timestamp = bpData.time,
+                    metricName = "bloodpressure_systolic_mmhg",
+                    valueNumeric = bpData.systolic,
+                    valueText = null,
+                    valueJson = null,
+                    unit = "mmHg",
+                    tags = null
+                )
+            )
+            dataPoints.add(
+                org.devpins.pihs.data.model.DataPoint(
+                    metricSourceId = metricSourceId,
+                    timestamp = bpData.time,
+                    metricName = "bloodpressure_diastolic_mmhg",
+                    valueNumeric = bpData.diastolic,
+                    valueText = null,
+                    valueJson = null,
+                    unit = "mmHg",
+                    tags = null
+                )
+            )
+        }
+    }
+
+    // Blood Glucose
+    pihsHealthData.bloodGlucose.forEach { bgData ->
+        if (bgData.level > 0) {
+            dataPoints.add(
+                org.devpins.pihs.data.model.DataPoint(
+                    metricSourceId = metricSourceId,
+                    timestamp = bgData.time,
+                    metricName = "bloodglucose_level_mmolL",
+                    valueNumeric = bgData.level,
+                    valueText = null,
+                    valueJson = buildJsonObject {
+                        put("specimen_source", bgData.specimenSource)
+                        put("meal_type", bgData.mealType)
+                    },
+                    unit = "mmol/L",
+                    tags = null
+                )
+            )
+        }
+    }
+
+    // Body Temperature
+    pihsHealthData.bodyTemperature.forEach { tempData ->
+        if (tempData.temperature > 0) {
+            dataPoints.add(
+                org.devpins.pihs.data.model.DataPoint(
+                    metricSourceId = metricSourceId,
+                    timestamp = tempData.time,
+                    metricName = "bodytemperature_reading_celsius",
+                    valueNumeric = tempData.temperature,
+                    valueText = null,
+                    valueJson = buildJsonObject {
+                        put("measurement_location", tempData.measurementLocation)
+                    },
+                    unit = "celsius",
+                    tags = null
+                )
+            )
+        }
+    }
+
+    // Oxygen Saturation
+    pihsHealthData.oxygenSaturation.forEach { o2Data ->
+        if (o2Data.saturation > 0) {
+            dataPoints.add(
+                org.devpins.pihs.data.model.DataPoint(
+                    metricSourceId = metricSourceId,
+                    timestamp = o2Data.time,
+                    metricName = "spo2_reading_percentage",
+                    valueNumeric = o2Data.saturation,
+                    valueText = null,
+                    valueJson = null,
+                    unit = "percent",
+                    tags = null
+                )
+            )
+        }
+    }
+
+    // Respiratory Rate
+    pihsHealthData.respiratoryRate.forEach { rrData ->
+        if (rrData.rate > 0) {
+            dataPoints.add(
+                org.devpins.pihs.data.model.DataPoint(
+                    metricSourceId = metricSourceId,
+                    timestamp = rrData.time,
+                    metricName = "respiratoryrate_reading_bpm",
+                    valueNumeric = rrData.rate,
+                    valueText = null,
+                    valueJson = null,
+                    unit = "breaths_per_minute",
+                    tags = null
+                )
+            )
+        }
+    }
+
+    // Hydration
+    pihsHealthData.hydration.forEach { hydrationData ->
+        if (hydrationData.volume > 0) {
+            dataPoints.add(
+                org.devpins.pihs.data.model.DataPoint(
+                    metricSourceId = metricSourceId,
+                    timestamp = hydrationData.endTime,
+                    metricName = "hydration_intake_liters",
+                    valueNumeric = hydrationData.volume,
+                    valueText = null,
+                    valueJson = null,
+                    unit = "L",
+                    tags = null
+                )
+            )
+        }
+    }
+
+    // Sleep Metrics (decomposed from PIHSSleepData)
+    pihsHealthData.sleep.forEach { sleepData ->
+        val sleepTags = buildJsonObject { put("sleep_session_start_time", sleepData.startTime) }
+
+        if (sleepData.totalSleepDurationMinutes > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "total_sleep_duration_minutes", sleepData.totalSleepDurationMinutes, null, null, "minutes", sleepTags))
+        if (sleepData.deepSleepDurationMinutes > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "deep_sleep_duration_minutes", sleepData.deepSleepDurationMinutes, null, null, "minutes", sleepTags))
+        if (sleepData.lightSleepDurationMinutes > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "light_sleep_duration_minutes", sleepData.lightSleepDurationMinutes, null, null, "minutes", sleepTags))
+        if (sleepData.remSleepDurationMinutes > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "rem_sleep_duration_minutes", sleepData.remSleepDurationMinutes, null, null, "minutes", sleepTags))
+        if (sleepData.sleepEfficiencyPercentage > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "sleep_efficiency_percentage", sleepData.sleepEfficiencyPercentage, null, null, "percent", sleepTags))
+        if (sleepData.sleepLatencyMinutes > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "sleep_latency_minutes", sleepData.sleepLatencyMinutes, null, null, "minutes", sleepTags))
+        if (sleepData.awakeningsCount > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "awakenings_count", sleepData.awakeningsCount.toDouble(), null, null, "count", sleepTags))
+        if (sleepData.timeInBedMinutes > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "time_in_bed_minutes", sleepData.timeInBedMinutes, null, null, "minutes", sleepTags))
+        if (sleepData.sleepScore > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "sleep_score", sleepData.sleepScore, null, null, "score", sleepTags))
+    }
+
+    pihsHealthData.exercise.forEach { exercise ->
+        val exerciseTags = buildJsonObject {
+            put("exercise_type", exercise.exerciseType)
+            put("exercise_session_start_time", exercise.startTime)
+            if (exercise.title.isNotEmpty()) put("exercise_title", exercise.title)
+        }
+
+        if (exercise.durationMinutes > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, exercise.endTime, "workout_duration_minutes", exercise.durationMinutes, null, null, "minutes", exerciseTags))
+        if (exercise.calories > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, exercise.endTime, "workout_calories_burned_kcal", exercise.calories, null, null, "kcal", exerciseTags))
+        if (exercise.distanceKm > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, exercise.endTime, "workout_distance_km", exercise.distanceKm, null, null, "km", exerciseTags))
+        if (exercise.averageHeartRateBpm > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, exercise.endTime, "workout_average_heart_rate_bpm", exercise.averageHeartRateBpm, null, null, "bpm", exerciseTags))
+        if (exercise.maxHeartRateBpm > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, exercise.endTime, "workout_max_heart_rate_bpm", exercise.maxHeartRateBpm, null, null, "bpm", exerciseTags))
+        if (exercise.stepsCount > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, exercise.endTime, "workout_steps_count", exercise.stepsCount.toDouble(), null, null, "count", exerciseTags))
+        if (exercise.activeEnergyKcal > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, exercise.endTime, "workout_active_energy_kcal", exercise.activeEnergyKcal, null, null, "kcal", exerciseTags))
+        dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, exercise.endTime, "workout_type", null, exercise.exerciseType, null, null, exerciseTags))
+    }
+
+    Log.d("HealthConnect", "HealthRepository: Transformed ${dataPoints.size} data points from PIHSHealthData.")
+    return dataPoints
+}
+} // Closing brace for HealthRepository class
+
+// Sync status
 sealed class SyncStatus {
     object Idle : SyncStatus()
     object Syncing : SyncStatus()

@@ -84,6 +84,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.devpins.pihs.health.HealthConnectAvailability
 import org.devpins.pihs.health.HealthRepository
+import org.devpins.pihs.health.SyncStatus // Added import for SyncStatus
 import org.devpins.pihs.health.SyncStatus
 import org.devpins.pihs.location.LocationManager
 import org.devpins.pihs.location.LocationTrackingCard
@@ -753,6 +754,7 @@ fun HealthConnectCard(
                         is SyncStatus.Syncing -> MaterialTheme.colorScheme.surfaceVariant
                         is SyncStatus.Success -> MaterialTheme.colorScheme.primaryContainer
                         is SyncStatus.Error -> MaterialTheme.colorScheme.errorContainer
+                        else -> MaterialTheme.colorScheme.surfaceVariant // Exhaustive when
                     }
                 ) {
                     Row(
@@ -770,6 +772,7 @@ fun HealthConnectCard(
                                 is SyncStatus.Syncing -> MaterialTheme.colorScheme.onSurfaceVariant
                                 is SyncStatus.Success -> MaterialTheme.colorScheme.onPrimaryContainer
                                 is SyncStatus.Error -> MaterialTheme.colorScheme.onErrorContainer
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant // Exhaustive when
                             }
                         )
                         Row(
@@ -808,6 +811,12 @@ fun HealthConnectCard(
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onErrorContainer
                                 )
+                                else -> Text( // Exhaustive when
+                                    text = "Unknown",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     }
@@ -815,7 +824,7 @@ fun HealthConnectCard(
                 if (syncStatus is SyncStatus.Error) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Error: ${syncStatus.message}",
+                        text = "Error: ${(syncStatus as SyncStatus.Error).message}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )

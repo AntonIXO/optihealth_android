@@ -2,8 +2,11 @@ package org.devpins.pihs.data.remote
 
 import com.github.luben.zstd.Zstd
 import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.functions.functions
-import io.github.jan.supabase.gotrue.auth
+import io.github.jan.supabase.functions.functions // Corrected: ensure this is the one for the client extension
+import io.github.jan.supabase.gotrue.auth // Corrected: ensure this is the one for the client extension
+import io.ktor.client.call.body // For response.body<Type>()
+import io.ktor.client.statement.HttpResponse // For the response type
+import io.ktor.http.HttpStatusCode // For response.status comparison
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.devpins.pihs.data.model.DataPoint
@@ -54,15 +57,15 @@ class DataUploaderService @Inject constructor(
             )
 
             // 5. Handle the Response
-            if (response.status.value / 100 == 2) { // Check for 2xx status codes
+            if (response.status.isSuccess()) { // Use Ktor's isSuccess() for 2xx check
                 try {
-                    val successResponse = response.body<UploadSuccessResponse>()
+                    val successResponse = response.body<UploadSuccessResponse>() // Uses io.ktor.client.call.body
                     UploadResult.Success(successResponse)
                 } catch (e: Exception) {
                     UploadResult.Failure("Successfully uploaded but failed to parse success response: ${e.message}", e)
                 }
             } else {
-                val errorBody = try { response.body<String>() } catch (e: Exception) { "Could not read error body." }
+                val errorBody = try { response.body<String>() } catch (e: Exception) { "Could not read error body." } // Uses io.ktor.client.call.body
                 UploadResult.Failure("Upload failed with status ${response.status.value}. Error: $errorBody")
             }
         } catch (e: Exception) {
