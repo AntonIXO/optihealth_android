@@ -243,8 +243,8 @@ class SoundLevelService : Service() {
         const val NOTIFICATION_ID = 2 // Different from other services if any
         const val CHANNEL_ID = "SoundLevelServiceChannel"
 
-        const val ACTION_START_SOUND_MONITORING = "org.devpins.pihs.action.START_SOUND_MONITORING"
-        const val ACTION_STOP_SOUND_MONITORING = "org.devpins.pihs.action.STOP_SOUND_MONITORING"
-        const val ACTION_MEASURE_SOUND_LOCATION_CHANGE = "org.devpins.pihs.action.MEASURE_SOUND_LOCATION_CHANGE"
+        const val ACTION_START_SOUND_MONITORING = "org.devpins.pihs.sound.ACTION_START_SOUND_MONITORING"
+        const val ACTION_STOP_SOUND_MONITORING = "org.devpins.pihs.sound.ACTION_STOP_SOUND_MONITORING"
+        const val ACTION_MEASURE_SOUND_LOCATION_CHANGE = "org.devpins.pihs.sound.ACTION_MEASURE_SOUND_LOCATION_CHANGE"
     }
 }

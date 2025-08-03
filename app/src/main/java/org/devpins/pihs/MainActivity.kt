@@ -84,10 +84,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.devpins.pihs.health.HealthConnectAvailability
 import org.devpins.pihs.health.HealthRepository
-import org.devpins.pihs.health.SyncStatus // Added import for SyncStatus
 import org.devpins.pihs.health.SyncStatus
 import org.devpins.pihs.location.LocationManager
 import org.devpins.pihs.location.LocationTrackingCard
+import org.devpins.pihs.sound.SoundLevelService
 import org.devpins.pihs.stats.UsageStatsHelper // Import UsageStatsHelper
 import org.devpins.pihs.ui.theme.PIHSTheme
 import java.security.MessageDigest
@@ -409,18 +409,21 @@ fun SoundLevelControlUI() {
                         soundMonitoringEnabled = newValue
                         Log.d("SoundLevelControlUI", "Sound monitoring toggled: $newValue")
                         Toast.makeText(context, "Sound monitoring: $newValue", Toast.LENGTH_SHORT).show()
-                        // TODO: Placeholder for starting/stopping SoundLevelService
-                        // if (newValue) {
-                        //     val intent = Intent(context, SoundLevelService::class.java).apply {
-                        //         action = SoundLevelService.ACTION_START_SOUND_MONITORING
-                        //     }
-                        //     context.startService(intent)
-                        // } else {
-                        //     val intent = Intent(context, SoundLevelService::class.java).apply {
-                        //         action = SoundLevelService.ACTION_STOP_SOUND_MONITORING
-                        //     }
-                        //     context.startService(intent)
-                        // }
+                        if (newValue) {
+                            val intent = Intent(context, SoundLevelService::class.java).apply {
+                                action = SoundLevelService.ACTION_START_SOUND_MONITORING
+                            }
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                context.startForegroundService(intent)
+                            } else {
+                                context.startService(intent)
+                            }
+                        } else {
+                            val intent = Intent(context, SoundLevelService::class.java).apply {
+                                action = SoundLevelService.ACTION_STOP_SOUND_MONITORING
+                            }
+                            context.startService(intent)
+                        }
                     }
                 )
             }

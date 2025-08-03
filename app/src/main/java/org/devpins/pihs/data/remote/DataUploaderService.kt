@@ -3,10 +3,11 @@ package org.devpins.pihs.data.remote
 import com.github.luben.zstd.Zstd
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.functions.functions // Corrected: ensure this is the one for the client extension
-import io.github.jan.supabase.gotrue.auth // Corrected: ensure this is the one for the client extension
+import io.github.jan.supabase.auth.auth // Corrected: ensure this is the one for the client extension
 import io.ktor.client.call.body // For response.body<Type>()
 import io.ktor.client.statement.HttpResponse // For the response type
 import io.ktor.http.HttpStatusCode // For response.status comparison
+import io.ktor.http.isSuccess
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.devpins.pihs.data.model.DataPoint

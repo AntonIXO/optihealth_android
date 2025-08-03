@@ -96,8 +96,8 @@ object SoundLevelManager {
             metric_source_id = metricSourceId,
             user_id = userId,
             tags = listOf(eventType),
-            unit = TODO(),
-            value_json = TODO() // Using eventType also as a tag, or define specific tags like TAG_PERIODIC
+            unit = "dB", // Decibels as the unit for sound level
+            value_json = mapOf("source" to "android_microphone", "event_type" to eventType) // Additional metadata
         )
     }
 

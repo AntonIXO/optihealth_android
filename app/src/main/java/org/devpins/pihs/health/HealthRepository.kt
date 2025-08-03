@@ -131,7 +131,7 @@ class HealthRepository @Inject constructor(
                 throw IllegalStateException("User not authenticated. Cannot sync health data.")
             }
 
-            // Check if sync was cancelled
+            // Check if sync was canceled
             if (syncCancelled) {
                 Log.d("HealthConnect", "HealthRepository: Sync cancelled")
                 _syncStatus.value = SyncStatus.Idle
