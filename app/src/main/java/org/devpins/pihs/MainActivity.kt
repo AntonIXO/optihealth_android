@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.viewModels
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -90,6 +91,7 @@ import org.devpins.pihs.location.LocationTrackingCard
 import org.devpins.pihs.sound.SoundLevelService
 import org.devpins.pihs.stats.UsageStatsHelper // Import UsageStatsHelper
 import org.devpins.pihs.ui.theme.PIHSTheme
+import org.devpins.pihs.ui.viewmodel.ExampleHealthViewModel
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.LocalDate
@@ -110,6 +112,8 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var locationManager: LocationManager
+
+    private val exampleHealthViewModel: ExampleHealthViewModel by viewModels()
 
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
 
@@ -277,6 +281,12 @@ class MainActivity : ComponentActivity() {
                         },
                         onSyncUsageData = {
                             // Actual sync logic in UsageStatsCard for better state management there
+                        },
+                        onUploadSampleData = {
+                            exampleHealthViewModel.collectAndUploadSampleData()
+                        },
+                        onUploadEmptyData = {
+                            exampleHealthViewModel.uploadEmptyData()
                         }
                     )
                 }
@@ -313,7 +323,9 @@ fun MainScreen(
     onStartLocationTracking: () -> Unit = {},
     onStopLocationTracking: () -> Unit = {},
     onOpenAppSettings: () -> Unit = {},
-    onSyncUsageData: () -> Unit // Added for future direct calls if needed, but logic is in UsageStatsCard
+    onSyncUsageData: () -> Unit, // Added for future direct calls if needed, but logic is in UsageStatsCard
+    onUploadSampleData: () -> Unit = {}, // For ExampleHealthViewModel.collectAndUploadSampleData
+    onUploadEmptyData: () -> Unit = {} // For ExampleHealthViewModel.uploadEmptyData
 ) {
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -370,6 +382,70 @@ fun MainScreen(
             UsageStatsCard(supabaseClient = supabaseClient) // Added UsageStatsCard
             Spacer(modifier = Modifier.height(16.dp)) // Spacer before new card
             SoundLevelControlUI() // Added SoundLevelControlUI call
+            Spacer(modifier = Modifier.height(16.dp)) // Spacer before ExampleHealthCard
+            ExampleHealthCard(
+                onUploadSampleData = onUploadSampleData,
+                onUploadEmptyData = onUploadEmptyData
+            )
+        }
+    }
+}
+
+@Composable
+fun ExampleHealthCard(
+    onUploadSampleData: () -> Unit,
+    onUploadEmptyData: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessLow
+                )
+            ),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = "Data Upload Test",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Test Data Upload (zstd)",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = onUploadSampleData,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("Upload Sample Health Data")
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedButton(
+                onClick = onUploadEmptyData,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("Upload Empty Data (Test)")
+            }
         }
     }
 }

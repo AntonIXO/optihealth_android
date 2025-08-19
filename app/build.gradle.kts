@@ -29,6 +29,11 @@ android {
                 "proguard-rules.pro"
             )
         }
+        debug {
+            // Check if you have this parameter enabled.
+            // Add if missing and rebuild your app to device.
+            isDebuggable = true
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
