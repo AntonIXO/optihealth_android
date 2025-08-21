@@ -388,10 +388,15 @@ fun MainScreen(
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
-            AuthenticationCard(
-                isLoggedIn = isLoggedIn,
-                supabaseClient = supabaseClient
-            )
+            if (!isLoggedIn) {
+                Button(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Login")
+                }
+            }
             Spacer(modifier = Modifier.height(16.dp))
             HealthConnectCard(
                 healthConnectAvailability = healthConnectAvailability,
@@ -422,11 +427,11 @@ fun MainScreen(
                 Spacer(modifier = Modifier.height(16.dp))
                 UsageStatsCard(supabaseClient = supabaseClient)
             }
-            Spacer(modifier = Modifier.height(16.dp)) // Spacer before ExampleHealthCard
-            ExampleHealthCard(
-                onUploadSampleData = onUploadSampleData,
-                onUploadEmptyData = onUploadEmptyData
-            )
+            // Spacer(modifier = Modifier.height(16.dp)) // Spacer before ExampleHealthCard
+            // ExampleHealthCard(
+            //     onUploadSampleData = onUploadSampleData,
+            //     onUploadEmptyData = onUploadEmptyData
+            // )
         }
     }
 }

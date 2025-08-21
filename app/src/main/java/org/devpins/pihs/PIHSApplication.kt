@@ -1,6 +1,7 @@
 package org.devpins.pihs
 
 import android.app.Application
+import android.content.Context
 import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
@@ -15,6 +16,10 @@ import org.devpins.pihs.background.UsageDataSyncWorker
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
+
+private const val SETTINGS_PREFS = "AppSettings"
+private const val KEY_ENABLE_HEALTH_SYNC = "enable_health_sync"
+private const val KEY_ENABLE_USAGE_SYNC = "enable_usage_sync"
 
 /**
  * Custom [Application] class for PIHS.
@@ -44,6 +49,10 @@ class PIHSApplication : Application(), Configuration.Provider {
 
     private fun scheduleDailySyncWorkers() {
         val workManager = WorkManager.getInstance(applicationContext)
+        val sharedPreferences = getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE)
+
+        val isHealthSyncEnabled = sharedPreferences.getBoolean(KEY_ENABLE_HEALTH_SYNC, true)
+        val isUsageSyncEnabled = sharedPreferences.getBoolean(KEY_ENABLE_USAGE_SYNC, true)
 
         // Constraints for the workers
         val constraints = Constraints.Builder()
@@ -53,36 +62,37 @@ class PIHSApplication : Application(), Configuration.Provider {
              .setRequiresDeviceIdle(true) // For tasks that can wait until device is idle
             .build()
 
-        // Schedule HealthDataSyncWorker
-        val healthSyncRequest =
-            PeriodicWorkRequestBuilder<HealthDataSyncWorker>(24, TimeUnit.HOURS)
-                .setConstraints(constraints)
-                .setInitialDelay(calculateInitialDelay(), TimeUnit.MILLISECONDS)
-                .addTag(HealthDataSyncWorker.WORK_NAME) // Optional: for easier identification
-                .build()
+        if (isHealthSyncEnabled) {
+            val healthSyncRequest =
+                PeriodicWorkRequestBuilder<HealthDataSyncWorker>(24, TimeUnit.HOURS)
+                    .setConstraints(constraints)
+                    .setInitialDelay(calculateInitialDelay(), TimeUnit.MILLISECONDS)
+                    .addTag(HealthDataSyncWorker.WORK_NAME) // Optional: for easier identification
+                    .build()
 
-        workManager.enqueueUniquePeriodicWork(
-            HealthDataSyncWorker.WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP, // Or REPLACE if you want to update the worker if it changes
-            healthSyncRequest
-        )
-        Log.d(TAG, "Enqueued ${HealthDataSyncWorker.WORK_NAME}")
+            workManager.enqueueUniquePeriodicWork(
+                HealthDataSyncWorker.WORK_NAME,
+                ExistingPeriodicWorkPolicy.KEEP, // Or REPLACE if you want to update the worker if it changes
+                healthSyncRequest
+            )
+            Log.d(TAG, "Enqueued ${HealthDataSyncWorker.WORK_NAME}")
+        }
 
-        // Schedule UsageDataSyncWorker
-        val usageSyncRequest =
-            PeriodicWorkRequestBuilder<UsageDataSyncWorker>(24, TimeUnit.HOURS)
-                .setConstraints(constraints)
-                .setInitialDelay(calculateInitialDelay(), TimeUnit.MILLISECONDS) // Use same delay or a slightly different one
-                .addTag(UsageDataSyncWorker.WORK_NAME) // Optional
-                .build()
+        if (isUsageSyncEnabled) {
+            val usageSyncRequest =
+                PeriodicWorkRequestBuilder<UsageDataSyncWorker>(24, TimeUnit.HOURS)
+                    .setConstraints(constraints)
+                    .setInitialDelay(calculateInitialDelay(), TimeUnit.MILLISECONDS) // Use same delay or a slightly different one
+                    .addTag(UsageDataSyncWorker.WORK_NAME) // Optional
+                    .build()
 
-        workManager.enqueueUniquePeriodicWork(
-            UsageDataSyncWorker.WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
-            usageSyncRequest
-        )
-        Log.d(TAG, "Enqueued ${UsageDataSyncWorker.WORK_NAME}")
-
+            workManager.enqueueUniquePeriodicWork(
+                UsageDataSyncWorker.WORK_NAME,
+                ExistingPeriodicWorkPolicy.KEEP,
+                usageSyncRequest
+            )
+            Log.d(TAG, "Enqueued ${UsageDataSyncWorker.WORK_NAME}")
+        }
     }
 
     /**
