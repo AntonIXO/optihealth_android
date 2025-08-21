@@ -88,7 +88,6 @@ import org.devpins.pihs.health.HealthRepository
 import org.devpins.pihs.health.SyncStatus
 import org.devpins.pihs.location.LocationManager
 import org.devpins.pihs.location.LocationTrackingCard
-import org.devpins.pihs.sound.SoundLevelService
 import org.devpins.pihs.stats.UsageStatsHelper // Import UsageStatsHelper
 import org.devpins.pihs.ui.theme.PIHSTheme
 import org.devpins.pihs.ui.viewmodel.ExampleHealthViewModel
@@ -100,6 +99,9 @@ import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 private const val PREF_KEY_TRACKING_ACTIVE = "is_tracking_active"
+private const val SETTINGS_PREFS = "AppSettings"
+private const val KEY_ENABLE_USAGE = "enable_usage_tracking"
+private const val KEY_ENABLE_LOCATION = "enable_location_tracking"
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -122,6 +124,10 @@ class MainActivity : ComponentActivity() {
 
     private val sharedPreferences by lazy {
         getSharedPreferences("LocationTrackingPrefs", Context.MODE_PRIVATE)
+    }
+
+    private val settingsPreferences by lazy {
+        getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -173,6 +179,9 @@ class MainActivity : ComponentActivity() {
             }
             var isIgnoringBatteryOptimizations by remember { mutableStateOf(locationManager.isIgnoringBatteryOptimizations()) }
 
+            var isUsageTrackingEnabled by remember { mutableStateOf(settingsPreferences.getBoolean(KEY_ENABLE_USAGE, true)) }
+            var isLocationFeatureEnabled by remember { mutableStateOf(settingsPreferences.getBoolean(KEY_ENABLE_LOCATION, true)) }
+
             val healthPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
                 contract = healthRepository.getPermissionRequestContract(),
                 onResult = { permissions ->
@@ -197,6 +206,14 @@ class MainActivity : ComponentActivity() {
                     // Refresh the state after returning from the settings screen
                     isIgnoringBatteryOptimizations = locationManager.isIgnoringBatteryOptimizations()
                     Log.d("MainActivity", "Returned from battery optimization settings. Is ignoring: $isIgnoringBatteryOptimizations")
+                }
+            )
+
+            val settingsLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+                onResult = {
+                    isUsageTrackingEnabled = settingsPreferences.getBoolean(KEY_ENABLE_USAGE, true)
+                    isLocationFeatureEnabled = settingsPreferences.getBoolean(KEY_ENABLE_LOCATION, true)
                 }
             )
 
@@ -246,6 +263,12 @@ class MainActivity : ComponentActivity() {
                         hasBackgroundLocationPermission = hasBackgroundLocationPermission,
                         isLocationTrackingActive = isLocationTrackingActive,
                         isIgnoringBatteryOptimizations = isIgnoringBatteryOptimizations,
+                        showLocationFeature = isLocationFeatureEnabled,
+                        showUsageFeature = isUsageTrackingEnabled,
+                        onOpenSettings = {
+                            val intent = Intent(context, org.devpins.pihs.settings.SettingsActivity::class.java)
+                            settingsLauncher.launch(intent)
+                        },
                         onRequestLocationPermissions = {
                             if (!hasLocationPermissions) {
                                 Log.d("PermissionRequest", "Requesting required foreground permissions.")
@@ -318,6 +341,9 @@ fun MainScreen(
     hasBackgroundLocationPermission: Boolean = false,
     isLocationTrackingActive: Boolean = false,
     isIgnoringBatteryOptimizations: Boolean = false,
+    showLocationFeature: Boolean = true,
+    showUsageFeature: Boolean = true,
+    onOpenSettings: () -> Unit = {},
     onRequestLocationPermissions: () -> Unit = {},
     onRequestIgnoreBatteryOptimizations: () -> Unit = {},
     onStartLocationTracking: () -> Unit = {},
@@ -350,6 +376,18 @@ fun MainScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(24.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(onClick = onOpenSettings, shape = RoundedCornerShape(8.dp)) {
+                    Icon(imageVector = Icons.Filled.Settings, contentDescription = "Settings")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "Settings")
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
             AuthenticationCard(
                 isLoggedIn = isLoggedIn,
                 supabaseClient = supabaseClient
@@ -367,21 +405,23 @@ fun MainScreen(
                 onCancelSync = onCancelSync
             )
             Spacer(modifier = Modifier.height(16.dp))
-            LocationTrackingCard(
-                hasRequiredPermissions = hasLocationPermissions,
-                hasBackgroundPermission = hasBackgroundLocationPermission,
-                isTrackingActive = isLocationTrackingActive,
-                isIgnoringBatteryOptimizations = isIgnoringBatteryOptimizations,
-                onRequestPermissions = onRequestLocationPermissions,
-                onRequestIgnoreBatteryOptimizations = onRequestIgnoreBatteryOptimizations,
-                onStartTracking = onStartLocationTracking,
-                onStopTracking = onStopLocationTracking,
-                onOpenAppSettings = onOpenAppSettings
-            )
-            Spacer(modifier = Modifier.height(16.dp)) // Added Spacer
-            UsageStatsCard(supabaseClient = supabaseClient) // Added UsageStatsCard
-            Spacer(modifier = Modifier.height(16.dp)) // Spacer before new card
-            SoundLevelControlUI() // Added SoundLevelControlUI call
+            if (showLocationFeature) {
+                LocationTrackingCard(
+                    hasRequiredPermissions = hasLocationPermissions,
+                    hasBackgroundPermission = hasBackgroundLocationPermission,
+                    isTrackingActive = isLocationTrackingActive,
+                    isIgnoringBatteryOptimizations = isIgnoringBatteryOptimizations,
+                    onRequestPermissions = onRequestLocationPermissions,
+                    onRequestIgnoreBatteryOptimizations = onRequestIgnoreBatteryOptimizations,
+                    onStartTracking = onStartLocationTracking,
+                    onStopTracking = onStopLocationTracking,
+                    onOpenAppSettings = onOpenAppSettings
+                )
+            }
+            if (showUsageFeature) {
+                Spacer(modifier = Modifier.height(16.dp))
+                UsageStatsCard(supabaseClient = supabaseClient)
+            }
             Spacer(modifier = Modifier.height(16.dp)) // Spacer before ExampleHealthCard
             ExampleHealthCard(
                 onUploadSampleData = onUploadSampleData,
@@ -450,62 +490,6 @@ fun ExampleHealthCard(
     }
 }
 
-@Composable
-fun SoundLevelControlUI() {
-    val context = LocalContext.current
-    var soundMonitoringEnabled by remember { mutableStateOf(false) }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .animateContentSize(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessLow
-                )
-            ),
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Enable Sound Monitoring",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.weight(1f)
-                )
-                Switch(
-                    checked = soundMonitoringEnabled,
-                    onCheckedChange = { newValue ->
-                        soundMonitoringEnabled = newValue
-                        Log.d("SoundLevelControlUI", "Sound monitoring toggled: $newValue")
-                        Toast.makeText(context, "Sound monitoring: $newValue", Toast.LENGTH_SHORT).show()
-                        if (newValue) {
-                            val intent = Intent(context, SoundLevelService::class.java).apply {
-                                action = SoundLevelService.ACTION_START_SOUND_MONITORING
-                            }
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                context.startForegroundService(intent)
-                            } else {
-                                context.startService(intent)
-                            }
-                        } else {
-                            val intent = Intent(context, SoundLevelService::class.java).apply {
-                                action = SoundLevelService.ACTION_STOP_SOUND_MONITORING
-                            }
-                            context.startService(intent)
-                        }
-                    }
-                )
-            }
-        }
-    }
-}
 
 @Composable
 fun UsageStatsCard(supabaseClient: SupabaseClient) {
