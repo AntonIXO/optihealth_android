@@ -9,6 +9,7 @@ import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.FlowType
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.functions.Functions
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.realtime.Realtime
@@ -16,8 +17,8 @@ import io.github.jan.supabase.realtime.realtime
 import javax.inject.Singleton
 
 // Hardcoded Supabase credentials - same as in MainActivity
-private const val SUPABASE_URL = "https://gdvghuytkemlslumyeov.supabase.co"
-private const val SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkdmdodXl0a2VtbHNsdW15ZW92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg4NzM0NTAsImV4cCI6MjA2NDQ0OTQ1MH0.HcdUWxm2Rbypxk8gIXrLkLvOxQg6BDpMF72eE4DXxQA"
+private const val SUPABASE_URL = "https://djtpgfcpdzzqzngaanrd.supabase.co"
+private const val SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqdHBnZmNwZHp6cXpuZ2FhbnJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU0MzQ1ODYsImV4cCI6MjA3MTAxMDU4Nn0.2G2aoz-yxeWEtqk1mNug-dH3yIQHUI9t6mXy2zyUHrk"
 
 @InstallIn(SingletonComponent::class)
 @Module
@@ -48,10 +49,11 @@ object SupabaseModule {
             install(Auth) {
                 flowType = FlowType.PKCE
                 scheme = "pihs"
-                host = "gdvghuytkemlslumyeov.supabase.co/auth/v1/callback"
+                host = "djtpgfcpdzzqzngaanrd.supabase.co/auth/v1/callback"
             }
             install(Postgrest)
             install(Realtime)
+            install(Functions)
         }
     }
 

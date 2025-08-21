@@ -2,18 +2,19 @@ package org.devpins.pihs.data.remote
 
 import com.github.luben.zstd.Zstd
 import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.functions.functions // Corrected: ensure this is the one for the client extension
-import io.github.jan.supabase.auth.auth // Corrected: ensure this is the one for the client extension
-import io.ktor.client.call.body // For response.body<Type>()
-import io.ktor.client.statement.HttpResponse // For the response type
-import io.ktor.http.HttpStatusCode // For response.status comparison
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.functions.functions
+import io.ktor.client.call.body
+import io.ktor.client.request.forms.MultiPartFormDataContent
+import io.ktor.client.request.forms.formData
 import io.ktor.http.isSuccess
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.devpins.pihs.data.model.DataPoint
 import org.devpins.pihs.data.remote.dto.UploadSuccessResponse
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.io.encoding.Base64
+// android.util.Base64
 
 sealed class UploadResult {
     data class Success(val response: UploadSuccessResponse) : UploadResult()
@@ -40,7 +41,9 @@ class DataUploaderService @Inject constructor(
             val jsonDataBytes = jsonString.encodeToByteArray()
 
             // 3. Compress with Zstandard
-            val compressedData = Zstd.compress(jsonDataBytes)
+            val compressedData = Zstd.compress(jsonDataBytes, 10)
+
+            val base64EncodedData = Base64.encode(compressedData)
 
             // 4. Invoke the Supabase Edge Function
             // Ensure the user is authenticated before calling,
@@ -50,9 +53,11 @@ class DataUploaderService @Inject constructor(
                 return UploadResult.Failure("User not authenticated. Cannot upload data.")
             }
 
+            val requestBody = mapOf("data" to base64EncodedData)
+
             val response = supabaseClient.functions.invoke(
                 function = "ingest-data",
-                body = compressedData
+                body = requestBody
                 // Default Content-Type for ByteArray should be application/octet-stream
                 // If issues arise, add: headers = mapOf("Content-Type" to "application/octet-stream")
             )
@@ -60,8 +65,9 @@ class DataUploaderService @Inject constructor(
             // 5. Handle the Response
             if (response.status.isSuccess()) { // Use Ktor's isSuccess() for 2xx check
                 try {
-                    val successResponse = response.body<UploadSuccessResponse>() // Uses io.ktor.client.call.body
-                    UploadResult.Success(successResponse)
+                    // Dont need now.
+                    // val successResponse = response.body<UploadSuccessResponse>() // Uses io.ktor.client.call.body
+                    UploadResult.Success(UploadSuccessResponse("Successfully uploaded data.", dataPoints.size, -1))
                 } catch (e: Exception) {
                     UploadResult.Failure("Successfully uploaded but failed to parse success response: ${e.message}", e)
                 }
