@@ -13,7 +13,7 @@ android {
 
     defaultConfig {
         applicationId = "org.devpins.pihs"
-        minSdk = 35
+        minSdk = 33
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -28,6 +28,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            // Check if you have this parameter enabled.
+            // Add if missing and rebuild your app to device.
+            isDebuggable = true
         }
     }
     compileOptions {
@@ -62,11 +67,12 @@ dependencies {
     implementation(libs.identity.jvm)
 
     // Supabase - using the correct package names
-    val supabaseVersion = "3.1.4" // Consolidate version
+    val supabaseVersion = "3.2.2" // Consolidate version
     implementation(platform("io.github.jan-tennert.supabase:bom:$supabaseVersion"))
     implementation("io.github.jan-tennert.supabase:postgrest-kt")
     implementation("io.github.jan-tennert.supabase:auth-kt")
     implementation("io.github.jan-tennert.supabase:realtime-kt")
+    implementation("io.github.jan-tennert.supabase:functions-kt")
 
     // Credential Manager for Google Sign-In
     implementation(libs.androidx.credentials)
@@ -93,15 +99,15 @@ dependencies {
     ksp(libs.androidx.hilt.compiler) // Use the latest version
 
     // WorkManager
-    implementation("androidx.work:work-runtime-ktx:2.10.1") // Use the latest version
+    implementation("androidx.work:work-runtime-ktx:2.10.3") // Use the latest version
 
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 
     // Google Play Services Location for Fused Location Provider
     implementation("com.google.android.gms:play-services-location:21.3.0")
 
-    implementation("com.github.luben:zstd-jni:1.5.7-3@aar")
-    testImplementation("com.github.luben:zstd-jni:1.5.7-3")
+    implementation("com.github.luben:zstd-jni:1.5.7-4@aar")
+    testImplementation("com.github.luben:zstd-jni:1.5.7-4")
 
 
     testImplementation(libs.junit)
