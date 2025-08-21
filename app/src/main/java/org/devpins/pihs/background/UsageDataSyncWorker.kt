@@ -29,7 +29,6 @@ import java.time.format.DateTimeParseException
  * @property user_id The ID of the user this metric source belongs to.
  * @property source_identifier A unique string identifying the type of source (e.g., "android_app_usage_daily_v1").
  * @property source_name A human-readable name for the source (e.g., "Android App Usage (Daily)").
- * @property source_type A category or type for the source (e.g., "background_android_usage_sync").
  * @property is_active Boolean indicating if this source is currently active.
  * @property last_synced_at Optional string representing the last date ("YYYY-MM-DD") data was synced for this source.
  * @property created_at Optional string representing the creation timestamp of this record.
@@ -41,7 +40,6 @@ data class MetricSource(
     val user_id: String,
     val source_identifier: String,
     val source_name: String,
-    val source_type: String,
     val is_active: Boolean,
     val last_synced_at: String? = null, // Stores date as "YYYY-MM-DD"
     val created_at: String? = null,
@@ -157,7 +155,6 @@ class UsageDataSyncWorker @AssistedInject constructor(
                         put("user_id", userId)
                         put("source_identifier", USAGE_SOURCE_IDENTIFIER)
                         put("source_name", USAGE_SOURCE_NAME)
-                        put("source_type", "background_android_usage_sync") // Or a more descriptive type
                         put("is_active", true)
                         put("last_synced_at", null as String?) // Explicitly null
                     }
