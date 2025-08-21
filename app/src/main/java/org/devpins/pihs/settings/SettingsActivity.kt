@@ -30,17 +30,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import org.devpins.pihs.background.BackgroundSyncController
 import org.devpins.pihs.ui.theme.PIHSTheme
-
-private const val SETTINGS_PREFS = "AppSettings"
-private const val KEY_ENABLE_USAGE = "enable_usage_tracking"
-private const val KEY_ENABLE_LOCATION = "enable_location_tracking"
+import org.devpins.pihs.settings.SettingsKeys
 
 class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val prefs = getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences(SettingsKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
         setContent {
             PIHSTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -61,18 +61,30 @@ class SettingsActivity : ComponentActivity() {
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(text = "Settings", style = MaterialTheme.typography.headlineMedium)
                         Spacer(modifier = Modifier.height(24.dp))
+                        // Background sync toggle
+                        ToggleRow(
+                            title = "Enable Background Sync",
+                            checkedInitial = prefs.getBoolean(SettingsKeys.KEY_ENABLE_BACKGROUND_SYNC, true),
+                        ) { newValue ->
+                            prefs.edit().putBoolean(SettingsKeys.KEY_ENABLE_BACKGROUND_SYNC, newValue).apply()
+                            if (newValue) BackgroundSyncController.enable(this@SettingsActivity) else BackgroundSyncController.disable(this@SettingsActivity)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        SyncStatusSection()
+                        Spacer(modifier = Modifier.height(24.dp))
+                        // Other toggles
                         ToggleRow(
                             title = "Enable App Usage Tracking",
-                            checkedInitial = prefs.getBoolean(KEY_ENABLE_USAGE, true),
+                            checkedInitial = prefs.getBoolean(SettingsKeys.KEY_ENABLE_USAGE, true),
                         ) { newValue ->
-                            prefs.edit().putBoolean(KEY_ENABLE_USAGE, newValue).apply()
+                            prefs.edit().putBoolean(SettingsKeys.KEY_ENABLE_USAGE, newValue).apply()
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         ToggleRow(
                             title = "Enable Location Tracking",
-                            checkedInitial = prefs.getBoolean(KEY_ENABLE_LOCATION, true),
+                            checkedInitial = prefs.getBoolean(SettingsKeys.KEY_ENABLE_LOCATION, true),
                         ) { newValue ->
-                            prefs.edit().putBoolean(KEY_ENABLE_LOCATION, newValue).apply()
+                            prefs.edit().putBoolean(SettingsKeys.KEY_ENABLE_LOCATION, newValue).apply()
                         }
                         Spacer(modifier = Modifier.height(24.dp))
                         // Optional: save button not required because we apply on change, but we can give a hint
@@ -101,5 +113,42 @@ private fun ToggleRow(title: String, checkedInitial: Boolean, onToggle: (Boolean
             checked.value = v
             onToggle(v)
         })
+    }
+}
+
+@Composable
+private fun SyncStatusSection() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = context.getSharedPreferences(SettingsKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
+
+    var lastHealthSync by remember { mutableStateOf(prefs.getLong(SettingsKeys.KEY_LAST_HEALTH_SYNC_AT, 0L)) }
+    var lastUsageSync by remember { mutableStateOf(prefs.getLong(SettingsKeys.KEY_LAST_USAGE_SYNC_AT, 0L)) }
+    val bgEnabled = prefs.getBoolean(SettingsKeys.KEY_ENABLE_BACKGROUND_SYNC, true)
+
+    fun formatTime(millis: Long): String {
+        if (millis <= 0L) return "Never"
+        val dt = java.text.DateFormat.getDateTimeInstance().format(java.util.Date(millis))
+        return dt
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "Background Sync Status",
+            style = MaterialTheme.typography.titleMedium
+        )
+        Spacer(Modifier.height(8.dp))
+        Text("Background Sync: ${if (bgEnabled) "Enabled" else "Disabled"}")
+        Spacer(Modifier.height(4.dp))
+        Text("Health Sync: Last success: ${formatTime(lastHealthSync)}")
+        Spacer(Modifier.height(4.dp))
+        Text("Usage Sync: Last success: ${formatTime(lastUsageSync)}")
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = {
+            // Reload timestamps from prefs
+            lastHealthSync = prefs.getLong(SettingsKeys.KEY_LAST_HEALTH_SYNC_AT, 0L)
+            lastUsageSync = prefs.getLong(SettingsKeys.KEY_LAST_USAGE_SYNC_AT, 0L)
+        }) {
+            Text("Refresh Status")
+        }
     }
 }

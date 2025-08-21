@@ -17,6 +17,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.devpins.pihs.stats.UsageStatsHelper
+import org.devpins.pihs.settings.SettingsKeys
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
@@ -113,6 +114,9 @@ class UsageDataSyncWorker @AssistedInject constructor(
             Log.i(TAG, "No usage data points to log for $dateToSync.")
             // Still update last_synced_at for this date to avoid re-checking an empty day
             updateLastUsageSyncedTimestamp(metricSourceDbId, dateToSync, supabaseClient)
+            // Record last successful sync time even if there was nothing to upload
+            val prefs = applicationContext.getSharedPreferences(SettingsKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
+            prefs.edit().putLong(SettingsKeys.KEY_LAST_USAGE_SYNC_AT, System.currentTimeMillis()).apply()
             return@withContext Result.success()
         }
 
@@ -120,6 +124,8 @@ class UsageDataSyncWorker @AssistedInject constructor(
             UsageStatsHelper.logDataToSupabase(dataPoints, supabaseClient)
             Log.d(TAG, "Successfully logged ${dataPoints.size} usage data points for $dateToSync.")
             updateLastUsageSyncedTimestamp(metricSourceDbId, dateToSync, supabaseClient)
+            val prefs = applicationContext.getSharedPreferences(SettingsKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
+            prefs.edit().putLong(SettingsKeys.KEY_LAST_USAGE_SYNC_AT, System.currentTimeMillis()).apply()
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Error logging usage data to Supabase for $dateToSync.", e)

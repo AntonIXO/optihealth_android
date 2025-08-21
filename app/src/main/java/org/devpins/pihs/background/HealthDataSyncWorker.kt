@@ -10,6 +10,7 @@ import dagger.assisted.AssistedInject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.devpins.pihs.health.HealthRepository
+import org.devpins.pihs.settings.SettingsKeys
 
 /**
  * A [CoroutineWorker] responsible for periodically syncing health data from Health Connect
@@ -39,6 +40,9 @@ class HealthDataSyncWorker @AssistedInject constructor(
             // returning a status or throwing a specific exception if the sync cannot be considered successful.
             healthRepository.syncHealthData()
             Log.i(TAG, "Health data sync completed successfully.")
+            // Record last successful sync time
+            val prefs = applicationContext.getSharedPreferences(SettingsKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
+            prefs.edit().putLong(SettingsKeys.KEY_LAST_HEALTH_SYNC_AT, System.currentTimeMillis()).apply()
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Error during health data sync.", e)
