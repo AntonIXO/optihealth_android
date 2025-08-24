@@ -36,7 +36,7 @@ class PIHSApplication : Application(), Configuration.Provider {
         val prefs = getSharedPreferences(SettingsKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
         val enabled = prefs.getBoolean(SettingsKeys.KEY_ENABLE_BACKGROUND_SYNC, true)
         if (enabled) {
-            BackgroundSyncController.scheduleDailySyncWorkers(this)
+            BackgroundSyncController.schedulePeriodicSyncWorkers(this)
         } else {
             BackgroundSyncController.disable(this)
         }

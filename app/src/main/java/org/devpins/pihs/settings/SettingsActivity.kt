@@ -51,13 +51,13 @@ class SettingsActivity : ComponentActivity() {
                         verticalArrangement = Arrangement.Top,
                         horizontalAlignment = Alignment.Start
                     ) {
-                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedButton(onClick = { finish() }, shape = RoundedCornerShape(8.dp)) {
-                                Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = "Back")
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Back")
-                            }
-                        }
+//                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+//                            OutlinedButton(onClick = { finish() }, shape = RoundedCornerShape(8.dp)) {
+//                                Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = "Back")
+//                                Spacer(modifier = Modifier.width(8.dp))
+//                                Text("Back")
+//                            }
+//                        }
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(text = "Settings", style = MaterialTheme.typography.headlineMedium)
                         Spacer(modifier = Modifier.height(24.dp))
@@ -69,6 +69,9 @@ class SettingsActivity : ComponentActivity() {
                             prefs.edit().putBoolean(SettingsKeys.KEY_ENABLE_BACKGROUND_SYNC, newValue).apply()
                             if (newValue) BackgroundSyncController.enable(this@SettingsActivity) else BackgroundSyncController.disable(this@SettingsActivity)
                         }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        // Sync interval selector
+                        SyncIntervalRow()
                         Spacer(modifier = Modifier.height(8.dp))
                         SyncStatusSection()
                         Spacer(modifier = Modifier.height(24.dp))
@@ -117,6 +120,54 @@ private fun ToggleRow(title: String, checkedInitial: Boolean, onToggle: (Boolean
 }
 
 @Composable
+private fun SyncIntervalRow() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = context.getSharedPreferences(SettingsKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
+
+    val optionsMinutes = listOf(15, 30, 60, 360, 720, 1440)
+    fun labelFor(minutes: Int): String = when (minutes) {
+        15 -> "Every 15 minutes"
+        30 -> "Every 30 minutes"
+        60 -> "Every 1 hour"
+        360 -> "Every 6 hours"
+        720 -> "Every 12 hours"
+        1440 -> "Every 24 hours"
+        else -> "Every ${minutes} minutes"
+    }
+
+    var current by remember { mutableStateOf(prefs.getInt(SettingsKeys.KEY_SYNC_INTERVAL_MINUTES, 1440)) }
+    // Normalize to the nearest available option if a non-standard value is present
+    if (!optionsMinutes.contains(current)) {
+        current = 1440
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = "Sync Interval", style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.height(4.dp))
+            Text(text = labelFor(current), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        OutlinedButton(onClick = {
+            val idx = optionsMinutes.indexOf(current)
+            val next = if (idx == -1 || idx == optionsMinutes.lastIndex) optionsMinutes.first() else optionsMinutes[idx + 1]
+            current = next
+            prefs.edit().putInt(SettingsKeys.KEY_SYNC_INTERVAL_MINUTES, next).apply()
+            // If background sync is enabled, reschedule with the new interval
+            val bgEnabled = prefs.getBoolean(SettingsKeys.KEY_ENABLE_BACKGROUND_SYNC, true)
+            if (bgEnabled) {
+                BackgroundSyncController.enable(context)
+            }
+        }, shape = RoundedCornerShape(8.dp)) {
+            Text("Change")
+        }
+    }
+}
+
+@Composable
 private fun SyncStatusSection() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = context.getSharedPreferences(SettingsKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
@@ -124,11 +175,21 @@ private fun SyncStatusSection() {
     var lastHealthSync by remember { mutableStateOf(prefs.getLong(SettingsKeys.KEY_LAST_HEALTH_SYNC_AT, 0L)) }
     var lastUsageSync by remember { mutableStateOf(prefs.getLong(SettingsKeys.KEY_LAST_USAGE_SYNC_AT, 0L)) }
     val bgEnabled = prefs.getBoolean(SettingsKeys.KEY_ENABLE_BACKGROUND_SYNC, true)
+    val intervalMinutes = prefs.getInt(SettingsKeys.KEY_SYNC_INTERVAL_MINUTES, 1440)
 
     fun formatTime(millis: Long): String {
         if (millis <= 0L) return "Never"
         val dt = java.text.DateFormat.getDateTimeInstance().format(java.util.Date(millis))
         return dt
+    }
+
+    fun intervalLabel(minutes: Int): String = when (minutes) {
+        15 -> "Every 15 minutes"
+        30 -> "Every 30 minutes"
+        60 -> "Every 1 hour"
+        360 -> "Every 6 hours"
+        720 -> "Every 12 hours"
+        else -> "Every 24 hours"
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -138,6 +199,8 @@ private fun SyncStatusSection() {
         )
         Spacer(Modifier.height(8.dp))
         Text("Background Sync: ${if (bgEnabled) "Enabled" else "Disabled"}")
+        Spacer(Modifier.height(4.dp))
+        Text("Sync Interval: ${intervalLabel(intervalMinutes)}")
         Spacer(Modifier.height(4.dp))
         Text("Health Sync: Last success: ${formatTime(lastHealthSync)}")
         Spacer(Modifier.height(4.dp))
