@@ -51,7 +51,9 @@ CREATE TABLE IF NOT EXISTS public.metric_definitions (
 id BIGSERIAL PRIMARY KEY,
 metric_name TEXT NOT NULL UNIQUE,
 category TEXT NOT NULL,
-default_unit TEXT NULL
+default_unit TEXT NULL,
+beautiful_name TEXT NULL
+
 );
 ALTER TABLE public.metric_definitions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Authenticated users can read metric definitions." ON public.metric_definitions FOR SELECT USING (auth.role() = 'authenticated');
@@ -152,14 +154,18 @@ BEGIN
 IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = current_partition_name) THEN
 EXECUTE format('CREATE TABLE %I PARTITION OF public.data_points FOR VALUES FROM (%L) TO (%L)',
 current_partition_name, current_month_start, next_month_start);
-RAISE NOTICE 'Created partition: %', current_partition_name;
+-- FIX: Explicitly enable RLS on the new partition
+EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', current_partition_name);
+RAISE NOTICE 'Created partition and enabled RLS for: %', current_partition_name;
 END IF;
 
     -- Create partition for next month if it doesn't exist
     IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = next_partition_name) THEN
         EXECUTE format('CREATE TABLE %I PARTITION OF public.data_points FOR VALUES FROM (%L) TO (%L)',
                        next_partition_name, next_month_start, next_month_start + interval '1 month');
-        RAISE NOTICE 'Created partition: %', next_partition_name;
+        -- FIX: Explicitly enable RLS on the new partition
+        EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', next_partition_name);
+        RAISE NOTICE 'Created partition and enabled RLS for: %', next_partition_name;
     END IF;
 END;
 $$ LANGUAGE plpgsql;
@@ -180,7 +186,9 @@ BEGIN
 IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = partition_name) THEN
 EXECUTE format('CREATE TABLE %I PARTITION OF public.data_points FOR VALUES FROM (%L) TO (%L)',
 partition_name, loop_month_start, partition_end_date);
-RAISE NOTICE 'Created historical partition: %', partition_name;
+-- FIX: Explicitly enable RLS on the new partition
+EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', partition_name);
+RAISE NOTICE 'Created historical partition and enabled RLS for: %', partition_name;
 END IF;
 END;
 loop_month_start := loop_month_start + interval '1 month';

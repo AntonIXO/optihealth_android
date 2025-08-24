@@ -724,8 +724,31 @@ private fun transformPihsToDataPoints(
             )
         )
 
-        if (sleepData.totalSleepDurationMinutes > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "sleep_duration_total", sleepData.totalSleepDurationMinutes, null, null, "minutes", sleepTags))
-        if (sleepData.deepSleepDurationMinutes > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "sleep_duration_deep", sleepData.deepSleepDurationMinutes, null, null, "minutes", sleepTags))
+        if (sleepData.totalSleepDurationMinutes > 0) dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = sleepData.endTime,
+                metricName = "sleep_duration_total",
+                valueNumeric = sleepData.totalSleepDurationMinutes,
+                valueText = null,
+                valueJson = null,
+                unit = "minutes",
+                tags = sleepTags
+            )
+        )
+        if (sleepData.deepSleepDurationMinutes > 0) dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = sleepData.endTime,
+                metricName = "sleep_duration_deep",
+                valueNumeric = sleepData.deepSleepDurationMinutes,
+                valueText = null,
+                valueJson = null,
+                valueGeography = null,
+                unit = "minutes",
+                tags = sleepTags
+            )
+        )
         if (sleepData.lightSleepDurationMinutes > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "sleep_duration_light", sleepData.lightSleepDurationMinutes, null, null, "minutes", sleepTags))
         if (sleepData.remSleepDurationMinutes > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "sleep_duration_rem", sleepData.remSleepDurationMinutes, null, null, "minutes", sleepTags))
         if (sleepData.sleepEfficiencyPercentage > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "sleep_efficiency_percentage", sleepData.sleepEfficiencyPercentage, null, null, "percentage", sleepTags))

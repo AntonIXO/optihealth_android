@@ -26,5 +26,7 @@ data class DataPoint(
     @SerialName("unit")
     val unit: String?,
     @SerialName("tags")
-    val tags: JsonElement?
+    val tags: JsonElement?,
+    @SerialName("value_geography")
+    val valueGeography: JsonElement? = null // GeoJSON Point: {"type":"Point","coordinates":[lon,lat]}
 )
