@@ -397,6 +397,7 @@ class HealthDataTransformer @Inject constructor() {
             "YOGA" -> "Yoga"
             "OTHER_WORKOUT" -> "Other Workout"
             "UNKNOWN" -> "Unknown"
+            "53" -> "Workout"
             else -> exerciseType.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }
         }
     }
