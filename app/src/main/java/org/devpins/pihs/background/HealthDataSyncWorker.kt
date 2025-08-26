@@ -34,19 +34,23 @@ class HealthDataSyncWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        val start = System.currentTimeMillis()
+        val attempt = runAttemptCount
+        Log.i(TAG, "doWork start | id=$id attempt=$attempt")
         return@withContext try {
-            Log.i(TAG, "Starting health data sync.")
-            // Assuming healthRepository.syncHealthData() handles its own internal errors and exceptions,
-            // returning a status or throwing a specific exception if the sync cannot be considered successful.
+            // Assuming healthRepository.syncHealthData() handles its own internal errors and exceptions.
             healthRepository.syncHealthData()
-            Log.i(TAG, "Health data sync completed successfully.")
             // Record last successful sync time
             val prefs = applicationContext.getSharedPreferences(SettingsKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
             prefs.edit().putLong(SettingsKeys.KEY_LAST_HEALTH_SYNC_AT, System.currentTimeMillis()).apply()
+            val elapsed = System.currentTimeMillis() - start
+            Log.i(TAG, "doWork success | id=$id attempt=$attempt elapsedMs=$elapsed")
             Result.success()
         } catch (e: Exception) {
-            Log.e(TAG, "Error during health data sync.", e)
-            Result.failure()
+            val elapsed = System.currentTimeMillis() - start
+            Log.e(TAG, "doWork error | id=$id attempt=$attempt elapsedMs=$elapsed", e)
+            // Treat as transient to leverage backoff retries
+            Result.retry()
         }
     }
 }

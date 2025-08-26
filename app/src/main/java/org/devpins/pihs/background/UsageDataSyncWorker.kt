@@ -36,7 +36,7 @@ import java.time.format.DateTimeParseException
  * @property updated_at Optional string representing the last update timestamp of this record.
  */
 @Serializable
-data class MetricSource(
+ data class MetricSource(
     val id: Long,
     val user_id: String,
     val source_identifier: String,
@@ -75,7 +75,9 @@ class UsageDataSyncWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        Log.d(TAG, "Starting usage data sync worker.")
+        val start = System.currentTimeMillis()
+        val attempt = runAttemptCount
+        Log.i(TAG, "doWork start | id=$id attempt=$attempt")
 
         if (!UsageStatsHelper.hasUsageStatsPermission(appContext)) {
             Log.w(TAG, "Usage stats permission not granted. Cannot sync.")
@@ -90,8 +92,8 @@ class UsageDataSyncWorker @AssistedInject constructor(
 
         val (metricSourceDbId, lastEffectivelySyncedDate) = getOrCreateUsageMetricSource(userId, supabaseClient)
         if (metricSourceDbId == -1L) {
-            Log.e(TAG, "Failed to get or create metric source for user $userId.")
-            return@withContext Result.failure()
+            Log.e(TAG, "Failed to get or create metric source for user $userId. Will retry later.")
+            return@withContext Result.retry()
         }
 
         val dateToSync = LocalDate.now().minusDays(1)
@@ -117,6 +119,8 @@ class UsageDataSyncWorker @AssistedInject constructor(
             // Record last successful sync time even if there was nothing to upload
             val prefs = applicationContext.getSharedPreferences(SettingsKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
             prefs.edit().putLong(SettingsKeys.KEY_LAST_USAGE_SYNC_AT, System.currentTimeMillis()).apply()
+            val elapsed = System.currentTimeMillis() - start
+            Log.i(TAG, "doWork success (empty set) | id=$id attempt=$attempt elapsedMs=$elapsed")
             return@withContext Result.success()
         }
 
@@ -126,10 +130,13 @@ class UsageDataSyncWorker @AssistedInject constructor(
             updateLastUsageSyncedTimestamp(metricSourceDbId, dateToSync, supabaseClient)
             val prefs = applicationContext.getSharedPreferences(SettingsKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
             prefs.edit().putLong(SettingsKeys.KEY_LAST_USAGE_SYNC_AT, System.currentTimeMillis()).apply()
+            val elapsed = System.currentTimeMillis() - start
+            Log.i(TAG, "doWork success | id=$id attempt=$attempt elapsedMs=$elapsed points=${dataPoints.size}")
             Result.success()
         } catch (e: Exception) {
-            Log.e(TAG, "Error logging usage data to Supabase for $dateToSync.", e)
-            Result.failure()
+            val elapsed = System.currentTimeMillis() - start
+            Log.e(TAG, "Error logging usage data to Supabase for $dateToSync | id=$id attempt=$attempt elapsedMs=$elapsed", e)
+            Result.retry()
         }
     }
 
@@ -171,7 +178,7 @@ class UsageDataSyncWorker @AssistedInject constructor(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error in getOrCreateUsageMetricSource for user $userId", e)
-            return Pair(-1L, null) // Indicate error
+            return Pair(-1L, null) // Indicate error (transient or server issue). Caller will retry.
         }
     }
 
