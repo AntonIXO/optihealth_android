@@ -141,6 +141,9 @@ private fun SyncIntervalRow() {
         current = 1440
     }
 
+    var showDialog by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(current) }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -152,18 +155,56 @@ private fun SyncIntervalRow() {
             Text(text = labelFor(current), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         OutlinedButton(onClick = {
-            val idx = optionsMinutes.indexOf(current)
-            val next = if (idx == -1 || idx == optionsMinutes.lastIndex) optionsMinutes.first() else optionsMinutes[idx + 1]
-            current = next
-            prefs.edit().putInt(SettingsKeys.KEY_SYNC_INTERVAL_MINUTES, next).apply()
-            // If background sync is enabled, reschedule with the new interval
-            val bgEnabled = prefs.getBoolean(SettingsKeys.KEY_ENABLE_BACKGROUND_SYNC, true)
-            if (bgEnabled) {
-                BackgroundSyncController.enable(context)
-            }
+            selected = current
+            showDialog = true
         }, shape = RoundedCornerShape(8.dp)) {
             Text("Change")
         }
+    }
+
+    if (showDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Choose sync interval") },
+            text = {
+                Column {
+                    optionsMinutes.forEach { minutes ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.RadioButton(
+                                selected = selected == minutes,
+                                onClick = { selected = minutes }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(text = labelFor(minutes), modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    current = selected
+                    prefs.edit().putInt(SettingsKeys.KEY_SYNC_INTERVAL_MINUTES, selected).apply()
+                    // If background sync is enabled, reschedule with the new interval
+                    val bgEnabled = prefs.getBoolean(SettingsKeys.KEY_ENABLE_BACKGROUND_SYNC, true)
+                    if (bgEnabled) {
+                        BackgroundSyncController.enable(context)
+                    }
+                    showDialog = false
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

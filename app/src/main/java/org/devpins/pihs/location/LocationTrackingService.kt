@@ -27,10 +27,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.add
+import io.github.jan.supabase.postgrest.query.Columns
 import org.devpins.pihs.MainActivity
 import org.devpins.pihs.R
+import org.devpins.pihs.data.model.DataPoint
+import org.devpins.pihs.data.remote.DataUploaderService
+import org.devpins.pihs.data.remote.UploadResult
 import java.time.Instant
 import javax.inject.Inject
 
@@ -54,6 +61,10 @@ class LocationTrackingService : Service() {
         // Intent actions
         const val ACTION_START_LOCATION_TRACKING = "org.devpins.pihs.ACTION_START_LOCATION_TRACKING"
         const val ACTION_STOP_LOCATION_TRACKING = "org.devpins.pihs.ACTION_STOP_LOCATION_TRACKING"
+
+        // Metric source constants for location datapoints
+        private const val LOCATION_SOURCE_IDENTIFIER = "android_location_significant_v1"
+        private const val LOCATION_SOURCE_NAME = "Android Location (Significant)"
     }
     
     @Inject
@@ -61,6 +72,9 @@ class LocationTrackingService : Service() {
     
     @Inject
     lateinit var auth: Auth
+
+    @Inject
+    lateinit var dataUploaderService: DataUploaderService
     
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private lateinit var fusedLocationClient: FusedLocationProviderClient
@@ -229,10 +243,10 @@ class LocationTrackingService : Service() {
                     Log.e(TAG, "Cannot log location change: User not authenticated")
                     return@launch
                 }
-                
+
                 val distanceKm = distanceMeters / 1000.0
                 val stabilityDurationMinutes = (System.currentTimeMillis() - potentialNewLocationTimestamp) / (60 * 1000)
-                
+
                 // Create properties JSON object
                 val properties = buildJsonObject {
                     put("previous_latitude", previousLocation.latitude)
@@ -242,8 +256,8 @@ class LocationTrackingService : Service() {
                     put("distance_moved_km", distanceKm)
                     put("stability_duration_minutes", stabilityDurationMinutes)
                 }
-                
-                // Create event JSON object
+
+                // Create event JSON object (for human-readable timeline)
                 val event = buildJsonObject {
                     put("user_id", userId)
                     put("event_name", "Significant Location Change")
@@ -257,12 +271,15 @@ class LocationTrackingService : Service() {
                         put("0", "automated_detection")
                     })
                 }
-                eventJsonString = event.toString() // Capture string representation
-                
+                eventJsonString = event.toString()
+
                 // Insert event into Supabase
                 Log.i(TAG, "Attempting to log significant location change to Supabase. Event data: $eventJsonString")
                 postgrest["events"].insert(event)
                 Log.d(TAG, "Successfully logged significant location change to Supabase")
+
+                // Also upload a data_points row for environment_location with GeoJSON geography
+                uploadEnvironmentLocation(userId, newLocation)
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error logging location change to Supabase. Attempted event data: $eventJsonString. User ID: ${auth.currentUserOrNull()?.id}", e)
@@ -270,6 +287,76 @@ class LocationTrackingService : Service() {
         }
     }
     
+    @Serializable
+    private data class MetricSourceId(val id: Long)
+
+    private suspend fun getOrCreateLocationMetricSource(userId: String): Long {
+        return try {
+            val existing = postgrest.from("metric_sources")
+                .select(Columns.list("id")) {
+                    filter {
+                        eq("user_id", userId)
+                        eq("source_identifier", LOCATION_SOURCE_IDENTIFIER)
+                    }
+                }
+                .decodeList<MetricSourceId>()
+
+            if (existing.isNotEmpty()) {
+                existing.first().id
+            } else {
+                val newSource = buildJsonObject {
+                    put("user_id", userId)
+                    put("source_identifier", LOCATION_SOURCE_IDENTIFIER)
+                    put("source_name", LOCATION_SOURCE_NAME)
+                    put("is_active", true)
+                    put("last_synced_at", null as String?)
+                }
+                val inserted = postgrest["metric_sources"].insert(newSource).decodeSingle<MetricSourceId>()
+                inserted.id
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting/creating location metric source", e)
+            -1L
+        }
+    }
+
+    private suspend fun uploadEnvironmentLocation(userId: String, newLocation: Location) {
+        try {
+            val metricSourceId = getOrCreateLocationMetricSource(userId)
+            if (metricSourceId == -1L) {
+                Log.e(TAG, "Cannot upload environment_location: metric source unavailable")
+                return
+            }
+
+            val geoJson = buildJsonObject {
+                put("type", "Point")
+                put("coordinates", buildJsonArray {
+                    add(newLocation.longitude)
+                    add(newLocation.latitude)
+                })
+            }
+
+            val dp = DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = Instant.ofEpochMilli(newLocation.time).toString(),
+                metricName = "environment_location",
+                valueNumeric = null,
+                valueText = null,
+                valueJson = null,
+                valueGeography = geoJson,
+                unit = null,
+                tags = null
+            )
+
+            when (val result = dataUploaderService.uploadDataPoints(listOf(dp))) {
+                is UploadResult.Success -> Log.d(TAG, "Uploaded environment_location datapoint successfully: ${result.response}")
+                is UploadResult.Failure -> Log.e(TAG, "Failed to upload environment_location datapoint: ${result.errorMessage}", result.exception)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error uploading environment_location datapoint", e)
+        }
+    }
+
     private fun createNotification(contentText: String): Notification {
         createNotificationChannel()
         
