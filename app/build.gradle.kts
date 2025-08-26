@@ -106,6 +106,9 @@ dependencies {
     implementation("com.github.luben:zstd-jni:1.5.7-4@aar")
     testImplementation("com.github.luben:zstd-jni:1.5.7-4")
 
+    // Neiry
+    implementation(files("libs/capsuleService-embedded-release.aar"))
+    implementation(files("libs/devicedriver-aar-release.aar"))
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
