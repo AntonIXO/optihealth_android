@@ -38,7 +38,7 @@ class HealthDataSyncWorker @AssistedInject constructor(
         val attempt = runAttemptCount
         Log.i(TAG, "doWork start | id=$id attempt=$attempt")
         return@withContext try {
-            // Assuming healthRepository.syncHealthData() handles its own internal errors and exceptions.
+            // Run sync; HealthRepository now throws on error so we only reach here on success.
             healthRepository.syncHealthData()
             // Record last successful sync time
             val prefs = applicationContext.getSharedPreferences(SettingsKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
@@ -46,9 +46,14 @@ class HealthDataSyncWorker @AssistedInject constructor(
             val elapsed = System.currentTimeMillis() - start
             Log.i(TAG, "doWork success | id=$id attempt=$attempt elapsedMs=$elapsed")
             Result.success()
+        } catch (e: IllegalStateException) {
+            val elapsed = System.currentTimeMillis() - start
+            Log.w(TAG, "doWork permanent failure (illegal state) | id=$id attempt=$attempt elapsedMs=$elapsed: ${e.message}")
+            // Do not retry on permanent conditions (e.g., user not logged in)
+            Result.failure()
         } catch (e: Exception) {
             val elapsed = System.currentTimeMillis() - start
-            Log.e(TAG, "doWork error | id=$id attempt=$attempt elapsedMs=$elapsed", e)
+            Log.e(TAG, "doWork transient error | id=$id attempt=$attempt elapsedMs=$elapsed", e)
             // Treat as transient to leverage backoff retries
             Result.retry()
         }
