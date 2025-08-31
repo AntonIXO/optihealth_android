@@ -21,3 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "PIHS"
 include(":app")
+include(":companion")
