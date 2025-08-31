@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.app.Activity
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -31,6 +32,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
@@ -91,6 +93,9 @@ import org.devpins.pihs.location.LocationTrackingCard
 import org.devpins.pihs.stats.UsageStatsHelper // Import UsageStatsHelper
 import org.devpins.pihs.ui.theme.PIHSTheme
 import org.devpins.pihs.ui.viewmodel.ExampleHealthViewModel
+import org.devpins.pihs.settings.SettingsKeys
+import org.devpins.pihs.neiry.NeiryManager
+import com.gelo.capsule.CapsuleNative
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.LocalDate
@@ -181,6 +186,7 @@ class MainActivity : ComponentActivity() {
 
             var isUsageTrackingEnabled by remember { mutableStateOf(settingsPreferences.getBoolean(KEY_ENABLE_USAGE, true)) }
             var isLocationFeatureEnabled by remember { mutableStateOf(settingsPreferences.getBoolean(KEY_ENABLE_LOCATION, true)) }
+            var isNeiryEnabled by remember { mutableStateOf(settingsPreferences.getBoolean(SettingsKeys.KEY_ENABLE_NEIRY, false)) }
 
             val healthPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
                 contract = healthRepository.getPermissionRequestContract(),
@@ -212,8 +218,9 @@ class MainActivity : ComponentActivity() {
             val settingsLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
                 contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
                 onResult = {
-                    isUsageTrackingEnabled = settingsPreferences.getBoolean(KEY_ENABLE_USAGE, true)
+                    isUsageTrackingEnabled = settingsPreferences.getBoolean(KEY_ENABLE_USAGE, false)
                     isLocationFeatureEnabled = settingsPreferences.getBoolean(KEY_ENABLE_LOCATION, true)
+                    isNeiryEnabled = settingsPreferences.getBoolean(SettingsKeys.KEY_ENABLE_NEIRY, false)
                 }
             )
 
@@ -265,6 +272,7 @@ class MainActivity : ComponentActivity() {
                         isIgnoringBatteryOptimizations = isIgnoringBatteryOptimizations,
                         showLocationFeature = isLocationFeatureEnabled,
                         showUsageFeature = isUsageTrackingEnabled,
+                        showNeiryFeature = isNeiryEnabled,
                         onOpenSettings = {
                             val intent = Intent(context, org.devpins.pihs.settings.SettingsActivity::class.java)
                             settingsLauncher.launch(intent)
@@ -343,6 +351,7 @@ fun MainScreen(
     isIgnoringBatteryOptimizations: Boolean = false,
     showLocationFeature: Boolean = true,
     showUsageFeature: Boolean = true,
+    showNeiryFeature: Boolean = false,
     onOpenSettings: () -> Unit = {},
     onRequestLocationPermissions: () -> Unit = {},
     onRequestIgnoreBatteryOptimizations: () -> Unit = {},
@@ -423,9 +432,77 @@ fun MainScreen(
                 UsageStatsCard(supabaseClient = supabaseClient)
             }
             Spacer(modifier = Modifier.height(16.dp)) // Spacer before ExampleHealthCard
+            if (showNeiryFeature) {
+                NeiryCard()
+                Spacer(modifier = Modifier.height(16.dp))
+            }
             ExampleHealthCard(
                 onUploadSampleData = onUploadSampleData,
                 onUploadEmptyData = onUploadEmptyData
+            )
+        }
+    }
+}
+
+@Composable
+fun NeiryCard() {
+    val context = LocalContext.current
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessLow
+                )
+            ),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Face,
+                    contentDescription = "Neiry Headband",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Neiry Headband",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        val activity = (context as? Activity)
+                        if (activity == null) {
+                            Toast.makeText(context, "Unable to get Activity context", Toast.LENGTH_SHORT).show()
+                        } else {
+                            NeiryManager.initAndConnect(activity)
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp)
+                ) { Text("Connect Headband") }
+                OutlinedButton(
+                    onClick = { NeiryManager.disconnect(); Toast.makeText(context, "Disconnected", Toast.LENGTH_SHORT).show() },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp)
+                ) { Text("Disconnect") }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Connect to your Neiry BCI headband and print heart rate to logs.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
