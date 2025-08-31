@@ -89,6 +89,13 @@ class SettingsActivity : ComponentActivity() {
                         ) { newValue ->
                             prefs.edit().putBoolean(SettingsKeys.KEY_ENABLE_LOCATION, newValue).apply()
                         }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        ToggleRow(
+                            title = "Enable Neiry Headband (beta)",
+                            checkedInitial = prefs.getBoolean(SettingsKeys.KEY_ENABLE_NEIRY, false),
+                        ) { newValue ->
+                            prefs.edit().putBoolean(SettingsKeys.KEY_ENABLE_NEIRY, newValue).apply()
+                        }
                         Spacer(modifier = Modifier.height(24.dp))
                         // Optional: save button not required because we apply on change, but we can give a hint
                         Text(text = "Changes are applied immediately.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
