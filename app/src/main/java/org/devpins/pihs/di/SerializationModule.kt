@@ -14,9 +14,12 @@ object SerializationModule {
     @Provides
     @Singleton
     fun provideJson(): Json = Json {
-        ignoreUnknownKeys = true // Good practice for robustness against API changes
-        prettyPrint = false // Not needed for network transmission, saves bandwidth
-        encodeDefaults = true // Ensure all fields are present in JSON, even if default
-        isLenient = true // Be lenient with JSON format if necessary
+        ignoreUnknownKeys = true // Robust against API changes
+        prettyPrint = false // Minimize payload size
+        // Important for ingestion: omit nulls so Edge Function/SQL don't see explicit nulls for optional fields
+        explicitNulls = false
+        // Avoid sending default values that aren't needed by the server schema
+        encodeDefaults = false
+        isLenient = true
     }
 }

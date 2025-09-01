@@ -84,7 +84,7 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion") // For JSON serialization with Ktor
 
     // Health Connect
-    implementation("androidx.health.connect:connect-client:1.1.0-rc01")
+    implementation("androidx.health.connect:connect-client:1.1.0-rc03")
 
     // Hilt for Dependency Injection
     implementation("com.google.dagger:hilt-android:2.56.2") // Check for latest Hilt version
@@ -109,6 +109,9 @@ dependencies {
     // Neiry
     implementation(files("libs/capsuleService-embedded-release.aar"))
     implementation(files("libs/devicedriver-aar-release.aar"))
+
+    // WearOS
+    implementation("com.google.android.gms:play-services-wearable:19.0.0")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

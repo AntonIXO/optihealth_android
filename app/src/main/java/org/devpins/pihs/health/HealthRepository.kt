@@ -210,6 +210,8 @@ class HealthRepository @Inject constructor(
         } catch (e: Exception) {
             Log.e("HealthConnect", "HealthRepository: Error syncing health data", e)
             _syncStatus.value = SyncStatus.Error(e.message ?: "Unknown error")
+            // Propagate the exception so WorkManager can apply backoff/retry logic
+            throw e
         } finally {
             syncCancelled = false
         }

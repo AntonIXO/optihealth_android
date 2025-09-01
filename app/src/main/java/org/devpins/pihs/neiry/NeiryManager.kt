@@ -11,6 +11,9 @@ import com.neurosdk2.neuro.Scanner
 import com.neurosdk2.neuro.Sensor
 import com.neurosdk2.neuro.interfaces.FPGDataReceived
 import com.neurosdk2.neuro.types.FPGData
+import com.neurosdk2.neuro.types.HeadphonesResistData
+import com.neurosdk2.neuro.interfaces.HeadbandResistDataReceived
+import com.neurosdk2.neuro.types.HeadbandResistData
 import com.neurosdk2.neuro.types.SensorFamily
 
 object NeiryManager {
@@ -82,12 +85,11 @@ object NeiryManager {
     }
 
     private fun setupHeadbandCallbacks(headband: Headband) {
-
+        // Log FPG data and naive HR estimate
         headband.fpgDataReceived = FPGDataReceived { arr: Array<FPGData> ->
             arr.forEach { data ->
                 val ir = data.irAmplitude
                 val now = System.currentTimeMillis()
-                // Naive peak detection for approximate BPM from PPG IR amplitude
                 if (prevSample < lastSample && lastSample > ir && lastSample > 0.1) {
                     if (lastPeakAt > 0) {
                         val dt = now - lastPeakAt
@@ -101,6 +103,17 @@ object NeiryManager {
                 prevSample = lastSample
                 lastSample = ir
             }
+        }
+        // Log electrode/headband resistance when available
+        try {
+            headband.headbandResistDataReceived = HeadbandResistDataReceived { resist: HeadbandResistData ->
+                Log.d(
+                    "Neiry",
+                    "Resistance O1=${"%.1f".format(resist.o1)}kΩ, O2=${"%.1f".format(resist.o2)}kΩ, T3=${"%.1f".format(resist.t3)}kΩ, T4=${"%.1f".format(resist.t4)}kΩ"
+                )
+            }
+        } catch (t: Throwable) {
+            Log.w("Neiry", "Failed to set resistance callback: ${t.message}")
         }
     }
 
