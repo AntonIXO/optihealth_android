@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import org.devpins.pihs.background.BackgroundSyncController
 import org.devpins.pihs.ui.theme.PIHSTheme
 import org.devpins.pihs.settings.SettingsKeys
+import com.google.android.gms.wearable.Wearable
 
 class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,6 +75,8 @@ class SettingsActivity : ComponentActivity() {
                         SyncIntervalRow()
                         Spacer(modifier = Modifier.height(8.dp))
                         SyncStatusSection()
+                        Spacer(modifier = Modifier.height(24.dp))
+                        CompanionSyncSection()
                         Spacer(modifier = Modifier.height(24.dp))
                         // Other toggles
                         ToggleRow(
@@ -260,6 +263,48 @@ private fun SyncStatusSection() {
             lastUsageSync = prefs.getLong(SettingsKeys.KEY_LAST_USAGE_SYNC_AT, 0L)
         }) {
             Text("Refresh Status")
+        }
+    }
+}
+
+
+@Composable
+fun CompanionSyncSection() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = context.getSharedPreferences(SettingsKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
+
+    val lastTemp = prefs.getFloat(SettingsKeys.KEY_WEAR_LAST_TEMP_VALUE, Float.NaN)
+    val lastReceivedAt = prefs.getLong(SettingsKeys.KEY_WEAR_LAST_TEMP_RECEIVED_AT, 0L)
+    val lastUploadAt = prefs.getLong(SettingsKeys.KEY_WEAR_LAST_UPLOAD_AT, 0L)
+    val lastError = prefs.getString(SettingsKeys.KEY_WEAR_LAST_UPLOAD_ERROR, null)
+
+    val connection = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("Checking...") }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        Wearable.getNodeClient(context).connectedNodes
+            .addOnSuccessListener { nodes ->
+                connection.value = if (nodes.isNotEmpty()) "Connected (${nodes.size})" else "Disconnected"
+            }
+            .addOnFailureListener {
+                connection.value = "Unknown"
+            }
+    }
+
+    fun fmt(ts: Long): String {
+        if (ts <= 0L) return "-"
+        val df = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+        return df.format(java.util.Date(ts))
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(text = "Wear Companion", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(text = "Connection: ${'$'}{connection.value}", style = MaterialTheme.typography.bodySmall)
+        val tempStr = if (lastTemp.isNaN()) "-" else String.format(java.util.Locale.getDefault(), "%.2f °C", lastTemp)
+        Text(text = "Last temp: ${'$'}tempStr", style = MaterialTheme.typography.bodySmall)
+        Text(text = "Received at: ${'$'}{fmt(lastReceivedAt)}", style = MaterialTheme.typography.bodySmall)
+        Text(text = "Last upload: ${'$'}{fmt(lastUploadAt)}", style = MaterialTheme.typography.bodySmall)
+        if (!lastError.isNullOrEmpty()) {
+            Text(text = "Last upload error: ${'$'}lastError", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

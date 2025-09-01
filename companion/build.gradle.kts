@@ -9,7 +9,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "org.devpins.companion"
+        applicationId = "org.devpins.pihs"
         minSdk = 33
         targetSdk = 36
         versionCode = 1

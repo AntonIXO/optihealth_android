@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,9 +30,33 @@ import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
 import androidx.wear.tooling.preview.devices.WearDevices
 import org.devpins.companion.presentation.theme.PIHSTheme
+import com.google.android.gms.wearable.PutDataMapRequest
+import com.google.android.gms.wearable.Wearable
+import android.os.SystemClock
 import java.text.DecimalFormat
 
 class MainActivity : ComponentActivity(), SensorEventListener {
+
+    private var lastTempSentAt: Long = 0L
+    private var lastTempSentValue: Double = Double.NaN
+    private val sendIntervalMs: Long = 30_000 // throttle to 30s
+
+    private fun maybeSendTemperature(tempC: Double) {
+        val now = System.currentTimeMillis()
+        val timeOk = now - lastTempSentAt >= sendIntervalMs
+        val valueOk = if (lastTempSentValue.isNaN()) true else kotlin.math.abs(tempC - lastTempSentValue) >= 0.05
+        if (timeOk || valueOk) {
+            lastTempSentAt = now
+            lastTempSentValue = tempC
+            val putReq = PutDataMapRequest.create("/vitals/body_temperature").apply {
+                dataMap.putDouble("value_celsius", tempC)
+                dataMap.putLong("timestamp", now)
+            }.asPutDataRequest().setUrgent()
+            Wearable.getDataClient(this).putDataItem(putReq)
+                .addOnSuccessListener { Log.d("WearSend", "Sent body temp $tempC at $now") }
+                .addOnFailureListener { e -> Log.e("WearSend", "Failed to send body temp", e) }
+        }
+    }
 
     private lateinit var sensorManager: SensorManager
     private var tempSensor: Sensor? = null
@@ -127,9 +152,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         if (event.sensor.name.contains(MOBVOI_TEMP_SENSOR_NAME, ignoreCase = true)) {
             // As per the smali analysis, the temperature value is at index 3
             if (event.values.size > 3) {
-                val tempValue = event.values[3]
+                val tempValue = event.values[3].toDouble()
                 val decimalFormat = DecimalFormat("0.00")
                 _temperature.value = "${decimalFormat.format(tempValue)}°C"
+                maybeSendTemperature(tempValue)
             }
         }
     }
@@ -191,8 +217,8 @@ fun SensorReadings(temperature: String, ppg: String, isOnBody: Boolean) {
 @Preview(device = WearDevices.SMALL_ROUND, showSystemUi = true)
 @Composable
 fun DefaultPreview() {
-    val temp = mutableStateOf("36.67°C")
-    val ppg = mutableStateOf("HR: 75 bpm")
-    val onBody = mutableStateOf(true)
+    val temp = remember { mutableStateOf("36.67°C") }
+    val ppg = remember { mutableStateOf("HR: 75 bpm") }
+    val onBody = remember { mutableStateOf(true) }
     WearApp(temperature = temp, ppg = ppg, isOnBody = onBody)
 }

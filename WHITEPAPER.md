@@ -47,6 +47,7 @@ The OptiHealth ecosystem is built on a modern, scalable architecture centered ar
 - Supabase Backend: Provides all necessary backend infrastructure, including user authentication, a powerful PostgreSQL database, and serverless Edge Functions for business logic and data ingestion.
 - Python Analysis Service: An external, asynchronous service responsible for computationally intensive tasks, including machine learning model training and deep insight generation.
 - External Services: Integrates with Android's Health Connect and UsageStatsManager APIs for data collection and a chosen LLM provider for natural language processing.
+- WearOS assistant app in addition to main android app
 #### 3. Advanced Storage Architecture & Data Schema
 The data storage layer of OptiHealth is engineered for high performance, massive scalability, and deep analytical power. We have moved beyond a simple relational model to a hybrid architecture that leverages specialized PostgreSQL extensions for time-series data, vector search, and efficient querying. This ensures a fast user experience and unlocks sophisticated, AI-driven insights.
 #### 3.1. Core Architectural Principles
@@ -107,8 +108,8 @@ This is the canonical registry of all trackable metrics, stored in the metric_de
 - workout_calories_burned: Estimated calories burned during a workout. kcal.
 - workout_type: The type of workout performed (e.g., "Running", "Cycling"). text.
 #### Vitals & Heart ❤️
-- heartrate_resting: Resting heart rate, typically measured in the morning. bpm.
-- heartrate_avg: Average heart rate over a specific period. bpm.
+- hr_resting: Resting heart rate, typically measured in the morning. bpm.
+- hr: heart rate over a specific period. bpm.
 - hrv_rmssd: The root mean square of successive differences, a key HRV metric. milliseconds.
 - body_temperature: Core or surface body temperature. celsius.
 - blood_oxygen_spo2: Blood oxygen saturation level, a measure of oxygen in the blood. percentage.
@@ -168,10 +169,26 @@ The web app will allow conversational data logging through a chat interface, pow
 - Purpose: To empower the user to become a researcher of their own health with powerful visualization tools.
 - Composition: A large, interactive charting canvas is controlled by a panel for selecting metrics, date ranges, and aggregation levels. A raw data table below the chart displays the corresponding data points.
 - Key Interactions: A Compare button to overlay a second metric for visual correlation, Chart Type toggles (line, bar, scatter), and an Export to CSV button.
+#### Proposed Database Functions
+To power the "What" layer, we will implement a series of database functions, categorized by the data they analyze.
+#### 1. Core Metric Analysis ( data_points table)
+These functions operate on the primary data_points table and are the workhorses of the dashboard.
+- get_metric_summary_for_period (Already Implemented): This is the foundational function for stat cards. It provides the average, minimum, maximum, and total count for any given numeric metric over a specified time period.
+- get_metric_time_bucketed: This is the primary function for generating visualizations like line or bar charts. It will take a metric name, a time period, and an interval (e.g., 'day', 'hour') and return a series of time buckets with an aggregated value for each. For example, it could return the average daily resting heart rate for the last 30 days.
+- get_latest_metric_value: A simple but crucial function for displaying the most recent measurement of a metric, such as the user's latest recorded weight or blood oxygen level.
+- get_metric_goal_adherence: This function will count the number of days within a period where a metric's value met a specific goal (e.g., value > 10000 for steps). This is essential for tracking progress and building features like "streaks."
+#### 2. Event Analysis ( events table)
+These functions provide insights into the user's logged activities and contextual data.
+- get_event_summary: This function will provide summary statistics for events over a period. It will return the total count of events (e.g., "4 workouts this week") and the sum of their durations (e.g., "3.5 hours of total workout time").
+- get_event_property_distribution: This function will analyze the properties JSONB field to provide frequency counts. For example, it could be used to generate a pie chart showing the distribution of workout_type for all logged workouts in the last month ("Running: 5, Cycling: 3, Weightlifting: 4").
+#### 3. Structured Log Analysis ( supplement_logs & app_usage_logs tables)
+These functions are tailored to the specific structure of the logging tables to provide specialized summaries.
+- get_supplement_summary: This function will calculate the total dosage of a specific supplement taken over a period. It can also provide a timeline of when a supplement was logged.
+- get_app_usage_summary: This is key for digital wellness insights. The function will calculate the total screen time over a period and can be instructed to group the results by app_name or app_category, allowing the user to see exactly where their time is spent.
 #### 4.3. The Insights Page: Discover Your "Why"
 - Purpose: To deliver the platform's core value by transforming raw data into personalized, actionable knowledge.
 - Composition: A grid of "insight cards," each presenting a single, significant finding from the user's data with a clear title, a one-sentence summary, and a supporting mini-visualization.
-- Key Interactions: A Generate New Insights button to manually trigger the analysis engine, filters to sort insights by category, and expandable cards that reveal detailed statistics about the analysis.
+- Key Interactions: A Generate New Insights button to manuallsuay trigger the analysis engine, filters to sort insights by category, and expandable cards that reveal detailed statistics about the analysis.
 #### 5. Data Analysis & Insight Generation Strategy
 The OptiHealth analysis engine is designed to operate in layers, providing insights of increasing sophistication by leveraging statistical methods, machine learning (ML), and time-series analysis.
 #### 5.1. Foundational Analysis (The "What")
@@ -202,3 +219,34 @@ This is a standalone FastAPI application responsible for all heavy-duty data sci
 2. Fetches Data: It connects directly to the Supabase PostgreSQL database using a secure connection string and pulls all necessary raw data for that user.
 3. Performs Analysis: It executes a suite of analysis functions using libraries like pandas, scikit-learn, and xgboost.
 4. Stores Results: The generated insights (as structured JSON) are written back to a dedicated insights table in the Supabase database, making them readily available for the user to view on the Insights page.
+#### 7. Wear OS Companion App for On-Demand Biometrics
+To complement passive data collection, a Wear OS companion app will enable active, on-demand capture of high-fidelity biometrics. This provides granular, contextual data points that are crucial for deeper analysis.
+#### 7.1. Functionality & Implementation
+The app will focus on providing on-demand Heart Rate Variability (RMSSD) readings derived from raw RR intervals and measuring Respiratory Rate during guided breathing exercises. A future update will allow users to add subjective tags (e.g., "stressed", "focused") immediately after a measurement, directly linking objective data with subjective context.
+The application will function as a satellite to the main Android app, leveraging the existing, robust data ingestion pipeline. It will not communicate directly with the backend.
+```graph TD
+    subgraph Watch
+        WearOS_App[Wear OS App]
+        PPG_Sensor[PPG Sensor]
+    end
+
+    subgraph Phone
+        AndroidApp[Main Android App]
+        WearDataLayer[Wearable Data Layer API]
+    end
+
+    subgraph Backend (Existing)
+        EdgeFunc[Supabase Edge Function]
+    end
+
+    PPG_Sensor -- Raw RR Intervals --> WearOS_App
+    WearOS_App -- HRV & RR Data --> WearDataLayer
+    WearDataLayer --> AndroidApp
+    AndroidApp -- Uses existing pipeline --> EdgeFunc
+
+```
+The data flow is simple:
+1. The Wear OS app captures sensor data.
+2. Data is sent to the paired phone via the Wearable Data Layer API.
+3. The main Android app processes and syncs the data using the established compression and ingestion mechanism.
+   This data integrates seamlessly into the existing schema. Calculated metrics will be stored in the data_points table ( hrv_rmssd, respiratory_rate). Raw sequences like RR intervals will leverage the value_json column, consistent with the sleep_stages model. Contextual tags will be stored in the events table, enabling semantic analysis via pgvector.
