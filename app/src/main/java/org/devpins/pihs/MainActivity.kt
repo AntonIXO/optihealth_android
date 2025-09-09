@@ -1255,7 +1255,7 @@ fun GoogleSignInButtonStyled(supabaseClient: SupabaseClient) {
                     provider = Google
                     nonce = rawNonce
                 }
-                Log.i("test", googleIdToken)
+//                Log.i("test", googleIdToken)
                 Toast.makeText(context, "You are signed in!", Toast.LENGTH_SHORT).show()
             } catch (e: androidx.credentials.exceptions.GetCredentialException) {
                 Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show()

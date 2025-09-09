@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.devpins.pihs.ui.viewmodel.CsvImportViewModel
 import org.devpins.pihs.ui.viewmodel.ImportState
+import androidx.core.graphics.toColorInt
 
 @AndroidEntryPoint
 class CsvImportActivity : AppCompatActivity() {
@@ -57,7 +58,7 @@ class CsvImportActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             // Set a semi-transparent background color
-            setBackgroundColor(Color.parseColor("#80000000"))
+            setBackgroundColor("#80000000".toColorInt())
         }
 
         // Create the ProgressBar
