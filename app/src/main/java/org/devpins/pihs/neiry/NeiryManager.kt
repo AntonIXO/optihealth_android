@@ -11,7 +11,6 @@ import com.neurosdk2.neuro.Scanner
 import com.neurosdk2.neuro.Sensor
 import com.neurosdk2.neuro.interfaces.FPGDataReceived
 import com.neurosdk2.neuro.types.FPGData
-import com.neurosdk2.neuro.types.HeadphonesResistData
 import com.neurosdk2.neuro.interfaces.HeadbandResistDataReceived
 import com.neurosdk2.neuro.types.HeadbandResistData
 import com.neurosdk2.neuro.types.SensorFamily
@@ -63,9 +62,9 @@ object NeiryManager {
             }
             val info = sensors.first()
             try {
-                val created = sc.createSensor(info)
+                val created = sc.createSensor(info) as Headband
                 sensor = created
-                if (created is Headband) {
+
                     Log.d("Neiry", "Found Neiry headband: ${info.name}")
                     Log.d("Neiry", "Family: ${info.sensFamily}")
                     Log.d("Neiry", "Sampling frequency: ${created.samplingFrequencyFPG}")
@@ -74,10 +73,11 @@ object NeiryManager {
                     Log.d("Neiry", "Pairing required: ${info.pairingRequired}")
                     Log.d("Neiry", "Battery level: ${created.state}")
                     setupHeadbandCallbacks(created)
-                }
+
                 created.connect()
                 Toast.makeText(activity, "Connecting to ${info.name}", Toast.LENGTH_SHORT).show()
                 Log.d("Neiry", "Connecting to ${info.name}")
+                // TODO: close scanner
             } catch (t: Throwable) {
                 Log.e("Neiry", "Failed to create/connect sensor", t)
             }

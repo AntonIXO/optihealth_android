@@ -62,6 +62,7 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.identity.jvm)
+    implementation(libs.androidx.appcompat)
 
     // Supabase - using the correct package names
     val supabaseVersion = "3.2.2" // Consolidate version
@@ -109,6 +110,8 @@ dependencies {
     // Neiry
     implementation(files("libs/capsuleService-embedded-release.aar"))
     implementation(files("libs/devicedriver-aar-release.aar"))
+//    implementation("com.github.BrainbitLLC:neurosdk2:1.0.6.34")
+    implementation("com.github.doyaaaaaken:kotlin-csv-jvm:1.10.0")
 
     // WearOS
     implementation("com.google.android.gms:play-services-wearable:19.0.0")

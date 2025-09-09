@@ -1,5 +1,6 @@
 package org.devpins.pihs.data.remote
 
+import android.util.Log
 import com.github.luben.zstd.Zstd
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth

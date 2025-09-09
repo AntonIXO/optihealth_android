@@ -107,6 +107,20 @@
             android:foregroundServiceType="location"
             android:enabled="true"
             android:exported="false" />
+
+    <activity
+        android:name=".ui.activity.CsvImportActivity"
+        android:exported="true"
+        android:label="Import to OptiHealth"
+        android:theme="@style/Theme.AppCompat.Translucent">
+        <intent-filter>
+        <action android:name="android.intent.action.SEND" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <data android:mimeType="text/csv" />
+        <data android:mimeType="text/comma-separated-values" />
+        <data android:mimeType="application/csv" />
+    </intent-filter>
+    </activity>
             
     </application>
 
