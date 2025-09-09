@@ -1,5 +1,6 @@
 package org.devpins.pihs.data.remote
 
+import android.util.Log
 import com.github.luben.zstd.Zstd
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
@@ -32,6 +33,8 @@ class DataUploaderService @Inject constructor(
         if (dataPoints.isEmpty()) {
             return UploadResult.Success(UploadSuccessResponse("No data points to upload.", 0, 0))
         }
+
+        supabaseClient.auth.awaitInitialization()
 
         return try {
             // 1. Serialize to JSON string
@@ -67,7 +70,8 @@ class DataUploaderService @Inject constructor(
                 try {
                     // Dont need now.
                     // val successResponse = response.body<UploadSuccessResponse>() // Uses io.ktor.client.call.body
-                    UploadResult.Success(UploadSuccessResponse("Successfully uploaded data.", dataPoints.size, -1))
+                    // TODO: true inserted datapoints size
+                    UploadResult.Success(UploadSuccessResponse("Successfully uploaded data.", dataPoints.size, dataPoints.size))
                 } catch (e: Exception) {
                     UploadResult.Failure("Successfully uploaded but failed to parse success response: ${e.message}", e)
                 }
