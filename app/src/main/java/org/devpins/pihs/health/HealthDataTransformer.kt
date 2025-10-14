@@ -73,12 +73,15 @@ class HealthDataTransformer @Inject constructor() {
             // Process each sleep stage
             record.stages.forEach { stage ->
                 val stageDurationSeconds = stage.endTime.epochSecond - stage.startTime.epochSecond
+                val stageValue = stage.stage
 
-                when (stage.stage.toString()) {
-                    "DEEP" -> deepSleepSeconds += stageDurationSeconds
-                    "LIGHT" -> lightSleepSeconds += stageDurationSeconds
-                    "REM" -> remSleepSeconds += stageDurationSeconds
-                    "AWAKE" -> {
+                // Map stage value to type
+                // Health Connect stage values: 1=AWAKE, 2=SLEEPING, 3=OUT_OF_BED, 4=LIGHT, 5=DEEP, 6=REM
+                when (stageValue) {
+                    5 -> deepSleepSeconds += stageDurationSeconds // DEEP
+                    4 -> lightSleepSeconds += stageDurationSeconds // LIGHT
+                    6 -> remSleepSeconds += stageDurationSeconds // REM
+                    1 -> { // AWAKE
                         awakeSeconds += stageDurationSeconds
                         if (!lastStageWasAwake) {
                             awakeningsCount++
@@ -89,7 +92,7 @@ class HealthDataTransformer @Inject constructor() {
                 }
 
                 // Update lastStageWasAwake for next iteration
-                lastStageWasAwake = stage.stage.toString() == "AWAKE"
+                lastStageWasAwake = stageValue == 1
             }
 
             // Calculate total sleep duration (excluding awake time)
@@ -107,7 +110,7 @@ class HealthDataTransformer @Inject constructor() {
             // This is an approximation - time from start of session to first non-awake stage
             var sleepLatencySeconds = 0L
             if (record.stages.isNotEmpty()) {
-                val firstNonAwakeStage = record.stages.find { it.stage.toString() != "AWAKE" }
+                val firstNonAwakeStage = record.stages.find { it.stage != 1 } // 1 = AWAKE
                 if (firstNonAwakeStage != null) {
                     sleepLatencySeconds = firstNonAwakeStage.startTime.epochSecond - record.startTime.epochSecond
                 }
@@ -122,7 +125,7 @@ class HealthDataTransformer @Inject constructor() {
                     PIHSSleepStage(
                         startTime = formatInstant(stage.startTime),
                         endTime = formatInstant(stage.endTime),
-                        stage = stage.stage.toString()
+                        stage = mapSleepStageToName(stage.stage)
                     )
                 },
                 totalSleepDurationMinutes = totalSleepMinutes,
@@ -322,6 +325,19 @@ class HealthDataTransformer @Inject constructor() {
     // Format Instant to ISO string
     private fun formatInstant(instant: Instant): String {
         return dateTimeFormatter.format(instant)
+    }
+
+    // Map sleep stage numeric value to readable name
+    private fun mapSleepStageToName(stageValue: Int): String {
+        return when (stageValue) {
+            1 -> "awake"
+            2 -> "sleeping"
+            3 -> "out_of_bed"
+            4 -> "light"
+            5 -> "deep"
+            6 -> "rem"
+            else -> "unknown"
+        }
     }
 
     // Map exercise type to human-readable name

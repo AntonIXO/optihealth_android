@@ -78,7 +78,7 @@ dependencies {
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
     // Ktor
-    val ktorVersion = "3.1.1" // Updated Ktor version
+    val ktorVersion = "3.2.3" // Updated Ktor version
     implementation("io.ktor:ktor-client-core:$ktorVersion")
     implementation("io.ktor:ktor-client-okhttp:$ktorVersion") // Or ktor-client-android
     implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion") // For content negotiation

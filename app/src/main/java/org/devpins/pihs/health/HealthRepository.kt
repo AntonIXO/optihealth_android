@@ -526,7 +526,8 @@ private fun transformPihsToDataPoints(
                     valueText = null,
                     valueJson = null,
                     unit = "count",
-                    tags = null
+                    tags = null,
+                    valueGeography = null
                 )
             )
         }
@@ -544,7 +545,8 @@ private fun transformPihsToDataPoints(
                     valueText = null,
                     valueJson = null,
                     unit = "kg",
-                    tags = null
+                    tags = null,
+                    valueGeography = null
                 )
             )
         }
@@ -563,7 +565,8 @@ private fun transformPihsToDataPoints(
                         valueText = null,
                         valueJson = null,
                         unit = "bpm",
-                        tags = null
+                        tags = null,
+                        valueGeography = null
                     )
                 )
             }
@@ -582,7 +585,8 @@ private fun transformPihsToDataPoints(
                     valueText = null,
                     valueJson = null,
                     unit = "mmHg",
-                    tags = null
+                    tags = null,
+                    valueGeography = null
                 )
             )
             dataPoints.add(
@@ -594,7 +598,8 @@ private fun transformPihsToDataPoints(
                     valueText = null,
                     valueJson = null,
                     unit = "mmHg",
-                    tags = null
+                    tags = null,
+                    valueGeography = null
                 )
             )
         }
@@ -615,7 +620,8 @@ private fun transformPihsToDataPoints(
                         put("meal_type", bgData.mealType)
                     },
                     unit = "mg/dL",
-                    tags = null
+                    tags = null,
+                    valueGeography = null
                 )
             )
         }
@@ -635,7 +641,8 @@ private fun transformPihsToDataPoints(
                         put("measurement_location", tempData.measurementLocation)
                     },
                     unit = "celsius",
-                    tags = null
+                    tags = null,
+                    valueGeography = null
                 )
             )
         }
@@ -653,7 +660,8 @@ private fun transformPihsToDataPoints(
                     valueText = null,
                     valueJson = null,
                     unit = "percentage",
-                    tags = null
+                    tags = null,
+                    valueGeography = null
                 )
             )
         }
@@ -671,7 +679,8 @@ private fun transformPihsToDataPoints(
                     valueText = null,
                     valueJson = null,
                     unit = "breaths_per_minute",
-                    tags = null
+                    tags = null,
+                    valueGeography = null
                 )
             )
         }
@@ -689,17 +698,20 @@ private fun transformPihsToDataPoints(
                     valueText = null,
                     valueJson = null,
                     unit = "L",
-                    tags = null
+                    tags = null,
+                    valueGeography = null
                 )
             )
         }
     }
 
     // Sleep Metrics (decomposed from PIHSSleepData)
+        Log.d("SleepData", "sleepData: ${pihsHealthData.sleep}")
     pihsHealthData.sleep.forEach { sleepData ->
         val sleepTags = buildJsonObject { put("sleep_session_start_time", sleepData.startTime) }
 
         // sleep_stages: a single row with JSON array of stages; timestamp = start of session
+        Log.d("SleepData", "sleep_stages: ${sleepData}")
         val stagesJson = kotlinx.serialization.json.buildJsonArray {
             sleepData.stages.forEach { stage ->
                 val durationSeconds = Instant.parse(stage.endTime).epochSecond - Instant.parse(stage.startTime).epochSecond
@@ -722,7 +734,8 @@ private fun transformPihsToDataPoints(
                 valueText = null,
                 valueJson = stagesJson,
                 unit = "json",
-                tags = sleepTags
+                tags = sleepTags,
+                valueGeography = null
             )
         )
 
@@ -735,7 +748,8 @@ private fun transformPihsToDataPoints(
                 valueText = null,
                 valueJson = null,
                 unit = "minutes",
-                tags = sleepTags
+                tags = sleepTags,
+                valueGeography = null
             )
         )
         if (sleepData.deepSleepDurationMinutes > 0) dataPoints.add(
@@ -751,15 +765,111 @@ private fun transformPihsToDataPoints(
                 tags = sleepTags
             )
         )
-        if (sleepData.lightSleepDurationMinutes > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "sleep_duration_light", sleepData.lightSleepDurationMinutes, null, null, "minutes", sleepTags))
-        if (sleepData.remSleepDurationMinutes > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "sleep_duration_rem", sleepData.remSleepDurationMinutes, null, null, "minutes", sleepTags))
-        if (sleepData.sleepEfficiencyPercentage > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "sleep_efficiency_percentage", sleepData.sleepEfficiencyPercentage, null, null, "percentage", sleepTags))
-        if (sleepData.sleepLatencyMinutes > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "sleep_latency_minutes", sleepData.sleepLatencyMinutes, null, null, "minutes", sleepTags))
-        if (sleepData.awakeningsCount > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "awakenings_count", sleepData.awakeningsCount.toDouble(), null, null, "count", sleepTags))
-        if (sleepData.timeInBedMinutes > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "time_in_bed_minutes", sleepData.timeInBedMinutes, null, null, "minutes", sleepTags))
+        if (sleepData.lightSleepDurationMinutes > 0) dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = sleepData.endTime,
+                metricName = "sleep_duration_light",
+                valueNumeric = sleepData.lightSleepDurationMinutes,
+                valueText = null,
+                valueJson = null,
+                unit = "minutes",
+                tags = sleepTags,
+                valueGeography = null
+            )
+        )
+        if (sleepData.remSleepDurationMinutes > 0) dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = sleepData.endTime,
+                metricName = "sleep_duration_rem",
+                valueNumeric = sleepData.remSleepDurationMinutes,
+                valueText = null,
+                valueJson = null,
+                unit = "minutes",
+                tags = sleepTags,
+                valueGeography = null
+            )
+        )
+        if (sleepData.sleepEfficiencyPercentage > 0) dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = sleepData.endTime,
+                metricName = "sleep_efficiency_percentage",
+                valueNumeric = sleepData.sleepEfficiencyPercentage,
+                valueText = null,
+                valueJson = null,
+                unit = "percentage",
+                tags = sleepTags,
+                valueGeography = null
+            )
+        )
+        if (sleepData.sleepLatencyMinutes > 0) dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = sleepData.endTime,
+                metricName = "sleep_latency_minutes",
+                valueNumeric = sleepData.sleepLatencyMinutes,
+                valueText = null,
+                valueJson = null,
+                unit = "minutes",
+                tags = sleepTags,
+                valueGeography = null
+            )
+        )
+        if (sleepData.awakeningsCount > 0) dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = sleepData.endTime,
+                metricName = "awakenings_count",
+                valueNumeric = sleepData.awakeningsCount.toDouble(),
+                valueText = null,
+                valueJson = null,
+                unit = "count",
+                tags = sleepTags,
+                valueGeography = null
+            )
+        )
+        if (sleepData.timeInBedMinutes > 0) dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = sleepData.endTime,
+                metricName = "time_in_bed_minutes",
+                valueNumeric = sleepData.timeInBedMinutes,
+                valueText = null,
+                valueJson = null,
+                unit = "minutes",
+                tags = sleepTags,
+                valueGeography = null
+            )
+        )
         val awakeMinutes = sleepData.timeInBedMinutes - sleepData.totalSleepDurationMinutes
-        if (awakeMinutes > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "sleep_duration_awake", awakeMinutes, null, null, "minutes", sleepTags))
-        if (sleepData.sleepScore > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, sleepData.endTime, "sleep_score", sleepData.sleepScore, null, null, "score", sleepTags))
+        if (awakeMinutes > 0) dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = sleepData.endTime,
+                metricName = "sleep_duration_awake",
+                valueNumeric = awakeMinutes,
+                valueText = null,
+                valueJson = null,
+                unit = "minutes",
+                tags = sleepTags,
+                valueGeography = null
+            )
+        )
+        if (sleepData.sleepScore > 0) dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = sleepData.endTime,
+                metricName = "sleep_score",
+                valueNumeric = sleepData.sleepScore,
+                valueText = null,
+                valueJson = null,
+                unit = "score",
+                tags = sleepTags,
+                valueGeography = null
+            )
+        )
     }
 
     pihsHealthData.exercise.forEach { exercise ->
@@ -769,14 +879,110 @@ private fun transformPihsToDataPoints(
             if (exercise.title.isNotEmpty()) put("exercise_title", exercise.title)
         }
 
-        if (exercise.durationMinutes > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, exercise.endTime, "workout_duration", exercise.durationMinutes * 60.0, null, null, "seconds", exerciseTags))
-        if (exercise.calories > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, exercise.endTime, "workout_calories_burned", exercise.calories, null, null, "kcal", exerciseTags))
-        if (exercise.distanceKm > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, exercise.endTime, "workout_distance", exercise.distanceKm * 1000.0, null, null, "meters", exerciseTags))
-        if (exercise.averageHeartRateBpm > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, exercise.endTime, "workout_average_heart_rate_bpm", exercise.averageHeartRateBpm, null, null, "bpm", exerciseTags))
-        if (exercise.maxHeartRateBpm > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, exercise.endTime, "workout_max_heart_rate_bpm", exercise.maxHeartRateBpm, null, null, "bpm", exerciseTags))
-        if (exercise.stepsCount > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, exercise.endTime, "workout_steps_count", exercise.stepsCount.toDouble(), null, null, "count", exerciseTags))
-        if (exercise.activeEnergyKcal > 0) dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, exercise.endTime, "workout_active_energy_kcal", exercise.activeEnergyKcal, null, null, "kcal", exerciseTags))
-        dataPoints.add(org.devpins.pihs.data.model.DataPoint(metricSourceId, exercise.endTime, "workout_type", null, exercise.exerciseType, null, null, exerciseTags))
+        if (exercise.durationMinutes > 0) dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = exercise.endTime,
+                metricName = "workout_duration",
+                valueNumeric = exercise.durationMinutes * 60.0,
+                valueText = null,
+                valueJson = null,
+                unit = "seconds",
+                tags = exerciseTags,
+                valueGeography = null
+            )
+        )
+        if (exercise.calories > 0) dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = exercise.endTime,
+                metricName = "workout_calories_burned",
+                valueNumeric = exercise.calories,
+                valueText = null,
+                valueJson = null,
+                unit = "kcal",
+                tags = exerciseTags,
+                valueGeography = null
+            )
+        )
+        if (exercise.distanceKm > 0) dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = exercise.endTime,
+                metricName = "workout_distance",
+                valueNumeric = exercise.distanceKm * 1000.0,
+                valueText = null,
+                valueJson = null,
+                unit = "meters",
+                tags = exerciseTags,
+                valueGeography = null
+            )
+        )
+        if (exercise.averageHeartRateBpm > 0) dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = exercise.endTime,
+                metricName = "workout_average_heart_rate_bpm",
+                valueNumeric = exercise.averageHeartRateBpm,
+                valueText = null,
+                valueJson = null,
+                unit = "bpm",
+                tags = exerciseTags,
+                valueGeography = null
+            )
+        )
+        if (exercise.maxHeartRateBpm > 0) dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = exercise.endTime,
+                metricName = "workout_max_heart_rate_bpm",
+                valueNumeric = exercise.maxHeartRateBpm,
+                valueText = null,
+                valueJson = null,
+                unit = "bpm",
+                tags = exerciseTags,
+                valueGeography = null
+            )
+        )
+        if (exercise.stepsCount > 0) dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = exercise.endTime,
+                metricName = "workout_steps_count",
+                valueNumeric = exercise.stepsCount.toDouble(),
+                valueText = null,
+                valueJson = null,
+                unit = "count",
+                tags = exerciseTags,
+                valueGeography = null
+            )
+        )
+        if (exercise.activeEnergyKcal > 0) dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = exercise.endTime,
+                metricName = "workout_active_energy_kcal",
+                valueNumeric = exercise.activeEnergyKcal,
+                valueText = null,
+                valueJson = null,
+                unit = "kcal",
+                tags = exerciseTags,
+                valueGeography = null
+            )
+        )
+        dataPoints.add(
+            org.devpins.pihs.data.model.DataPoint(
+                metricSourceId = metricSourceId,
+                timestamp = exercise.endTime,
+                metricName = "workout_type",
+                valueNumeric = null,
+                valueText = exercise.exerciseType,
+                valueJson = null,
+                unit = null,
+                tags = exerciseTags,
+                valueGeography = null
+            )
+        )
     }
 
     Log.d("HealthConnect", "HealthRepository: Transformed ${dataPoints.size} data points from PIHSHealthData.")
