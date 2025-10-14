@@ -25,6 +25,7 @@
     <uses-permission android:name="android.permission.health.READ_STEPS"/>
     <uses-permission android:name="android.permission.health.READ_SLEEP"/>
     <uses-permission android:name="android.permission.health.READ_HEART_RATE"/>
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY"/>
     <uses-permission android:name="android.permission.health.READ_EXERCISE"/>
     <uses-permission android:name="android.permission.health.READ_WEIGHT"/>
     <uses-permission android:name="android.permission.health.READ_BLOOD_PRESSURE"/>
@@ -106,7 +107,13 @@
             android:name=".location.LocationTrackingService"
             android:foregroundServiceType="location"
             android:enabled="true"
-            android:exported="false" />
+            android:exported="false"
+            android:permission="android.permission.FOREGROUND_SERVICE"
+            tools:targetApi="34">
+            <meta-data
+                android:name="android.foregroundService.type"
+                android:value="location" />
+        </service>
 
     <activity
         android:name=".ui.activity.CsvImportActivity"

@@ -573,6 +573,33 @@ private fun transformPihsToDataPoints(
         }
     }
 
+    // Heart Rate Variability (RMSSD)
+    pihsHealthData.heartRateVariability.forEach { hrvData ->
+        if (hrvData.rmssdMillis > 0) {
+            val tags = if (hrvData.zoneOffset.isNotEmpty()) {
+                buildJsonObject {
+                    put("zone_offset", hrvData.zoneOffset)
+                }
+            } else {
+                null
+            }
+
+            dataPoints.add(
+                org.devpins.pihs.data.model.DataPoint(
+                    metricSourceId = metricSourceId,
+                    timestamp = hrvData.time,
+                    metricName = "hrv_rmssd",
+                    valueNumeric = hrvData.rmssdMillis,
+                    valueText = null,
+                    valueJson = null,
+                    unit = "ms",
+                    tags = tags,
+                    valueGeography = null
+                )
+            )
+        }
+    }
+
     // Blood Pressure
     pihsHealthData.bloodPressure.forEach { bpData ->
         if (bpData.systolic > 0 && bpData.diastolic > 0) {
