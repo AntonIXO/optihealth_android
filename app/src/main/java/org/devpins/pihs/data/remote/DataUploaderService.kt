@@ -5,13 +5,18 @@ import com.github.luben.zstd.Zstd
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.functions.functions
+import io.github.jan.supabase.postgrest.postgrest
 import io.ktor.client.call.body
 import io.ktor.client.request.forms.MultiPartFormDataContent
 import io.ktor.client.request.forms.formData
 import io.ktor.http.isSuccess
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.devpins.pihs.data.model.DataPoint
+import org.devpins.pihs.data.model.Event
 import org.devpins.pihs.data.remote.dto.UploadSuccessResponse
+import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.io.encoding.Base64
@@ -82,6 +87,59 @@ class DataUploaderService @Inject constructor(
         } catch (e: Exception) {
             // Catching ZstdException, SerializationException, network exceptions, etc.
             UploadResult.Failure("An error occurred during data upload: ${e.message}", e)
+        }
+    }
+
+    suspend fun uploadEvents(events: List<Event>): UploadResult {
+        if (events.isEmpty()) {
+            return UploadResult.Success(UploadSuccessResponse("No events to upload.", 0, 0))
+        }
+
+        supabaseClient.auth.awaitInitialization()
+
+        return try {
+            if (supabaseClient.auth.currentUserOrNull() == null) {
+                return UploadResult.Failure("User not authenticated. Cannot upload events.")
+            }
+
+            val userId = supabaseClient.auth.currentUserOrNull()?.id
+            if (userId == null) {
+                return UploadResult.Failure("User ID is null. Cannot upload events.")
+            }
+
+            // Use Postgrest to insert events directly
+            val postgrest = supabaseClient.postgrest
+            
+            var successCount = 0
+            var failureCount = 0
+            
+            events.forEach { event ->
+                try {
+                    val eventJson = buildJsonObject {
+                        put("user_id", userId)
+                        put("event_name", event.eventName)
+                        put("start_timestamp", event.startTimestamp)
+                        put("end_timestamp", event.endTimestamp)
+                        put("description", event.description)
+                        event.properties?.let { put("properties", it) }
+                        put("created_at", Instant.now().toString())
+                    }
+                    
+                    postgrest["events"].insert(eventJson)
+                    successCount++
+                } catch (e: Exception) {
+                    Log.e("DataUploaderService", "Failed to upload event: ${event.eventName}", e)
+                    failureCount++
+                }
+            }
+            
+            if (failureCount > 0) {
+                UploadResult.Failure("Uploaded $successCount events, but $failureCount failed")
+            } else {
+                UploadResult.Success(UploadSuccessResponse("Successfully uploaded events.", successCount, successCount))
+            }
+        } catch (e: Exception) {
+            UploadResult.Failure("An error occurred during event upload: ${e.message}", e)
         }
     }
 }

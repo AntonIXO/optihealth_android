@@ -497,6 +497,26 @@ class HealthRepository @Inject constructor(
         }
         Log.d("HealthConnect", "HealthRepository: Processed nutrition records for events table (Postgrest)")
 
+        // Upload sleep events using DataUploaderService
+        val eventsToUpload = transformPihsToEvents(pihsHealthData)
+        if (eventsToUpload.isNotEmpty()) {
+            Log.d("HealthConnect", "HealthRepository: Preparing to upload ${eventsToUpload.size} events via DataUploaderService.")
+            when (val result = dataUploaderService.uploadEvents(eventsToUpload)) {
+                is org.devpins.pihs.data.remote.UploadResult.Success -> {
+                    Log.i(
+                        "HealthConnect",
+                        "Events uploaded successfully. Message: ${result.response.message}. Client sent: ${eventsToUpload.size} items."
+                    )
+                }
+                is org.devpins.pihs.data.remote.UploadResult.Failure -> {
+                    Log.e("HealthConnect", "DataUploaderService failure on events upload: ${result.errorMessage}", result.exception)
+                    // Throw an exception to be caught by the calling sync function
+                    throw result.exception ?: RuntimeException("DataUploaderService failed: ${result.errorMessage}")
+                }
+            }
+        } else {
+            Log.d("HealthConnect", "HealthRepository: No events to upload via DataUploaderService.")
+        }
 
         // This try-catch block and its contents were remnants of the old upload logic and are now redundant.
         // The calls to getOrCreateMetricSource and uploadMetricsToDataPoints were causing errors as these methods were deleted.
@@ -737,34 +757,8 @@ private fun transformPihsToDataPoints(
     pihsHealthData.sleep.forEach { sleepData ->
         val sleepTags = buildJsonObject { put("sleep_session_start_time", sleepData.startTime) }
 
-        // sleep_stages: a single row with JSON array of stages; timestamp = start of session
-        Log.d("SleepData", "sleep_stages: ${sleepData}")
-        val stagesJson = kotlinx.serialization.json.buildJsonArray {
-            sleepData.stages.forEach { stage ->
-                val durationSeconds = Instant.parse(stage.endTime).epochSecond - Instant.parse(stage.startTime).epochSecond
-                add(
-                    buildJsonObject {
-                        put("stage", stage.stage.lowercase())
-                        put("startTimestamp", stage.startTime)
-                        put("endTimestamp", stage.endTime)
-                        put("durationSeconds", durationSeconds)
-                    }
-                )
-            }
-        }
-        dataPoints.add(
-            org.devpins.pihs.data.model.DataPoint(
-                metricSourceId = metricSourceId,
-                timestamp = sleepData.startTime,
-                metricName = "sleep_stages",
-                valueNumeric = null,
-                valueText = null,
-                valueJson = stagesJson,
-                unit = "json",
-                tags = sleepTags,
-                valueGeography = null
-            )
-        )
+        // Note: sleep_stages is now handled as an Event, not a DataPoint
+        // See transformPihsToEvents() method
 
         if (sleepData.totalSleepDurationMinutes > 0) dataPoints.add(
             org.devpins.pihs.data.model.DataPoint(
@@ -1015,6 +1009,56 @@ private fun transformPihsToDataPoints(
     Log.d("HealthConnect", "HealthRepository: Transformed ${dataPoints.size} data points from PIHSHealthData.")
     return dataPoints
 }
+
+    // New method to transform sleep stages to Events
+    private fun transformPihsToEvents(
+        pihsHealthData: PIHSHealthData
+    ): List<org.devpins.pihs.data.model.Event> {
+        val events = mutableListOf<org.devpins.pihs.data.model.Event>()
+
+        // Transform sleep stages to events
+        pihsHealthData.sleep.forEach { sleepData ->
+            Log.d("SleepData", "Transforming sleep_stages to event: ${sleepData}")
+            
+            // Build the stages JSON for the properties field
+            val stagesJson = kotlinx.serialization.json.buildJsonArray {
+                sleepData.stages.forEach { stage ->
+                    val durationSeconds = Instant.parse(stage.endTime).epochSecond - Instant.parse(stage.startTime).epochSecond
+                    add(
+                        buildJsonObject {
+                            put("stage", stage.stage.lowercase())
+                            put("startTimestamp", stage.startTime)
+                            put("endTimestamp", stage.endTime)
+                            put("durationSeconds", durationSeconds)
+                        }
+                    )
+                }
+            }
+
+            // Create properties object with stages and additional metadata
+            val properties = buildJsonObject {
+                put("stages", stagesJson)
+                put("total_duration_minutes", sleepData.totalSleepDurationMinutes)
+                put("deep_sleep_minutes", sleepData.deepSleepDurationMinutes)
+                put("light_sleep_minutes", sleepData.lightSleepDurationMinutes)
+                put("rem_sleep_minutes", sleepData.remSleepDurationMinutes)
+                put("efficiency_percentage", sleepData.sleepEfficiencyPercentage)
+            }
+
+            events.add(
+                org.devpins.pihs.data.model.Event(
+                    eventName = "sleep",
+                    startTimestamp = sleepData.startTime,
+                    endTimestamp = sleepData.endTime,
+                    description = "Sleep session with ${sleepData.stages.size} stage transitions",
+                    properties = properties
+                )
+            )
+        }
+
+        Log.d("HealthConnect", "HealthRepository: Transformed ${events.size} events from PIHSHealthData.")
+        return events
+    }
 } // Closing brace for HealthRepository class
 
 // Sync status
