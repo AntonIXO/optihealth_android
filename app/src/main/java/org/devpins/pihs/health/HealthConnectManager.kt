@@ -14,6 +14,8 @@ import androidx.health.connect.client.records.ExerciseRoute
 import androidx.health.connect.client.records.ExerciseSegment
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
+import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.HydrationRecord
 import androidx.health.connect.client.records.NutritionRecord
 import androidx.health.connect.client.records.OxygenSaturationRecord
@@ -222,6 +224,26 @@ class HealthConnectManager @Inject constructor(
      */
     suspend fun readHeartRateData(start: Instant, end: Instant): List<HeartRateRecord> {
         return readData(HeartRateRecord::class, start, end)
+    }
+
+    /**
+     * Reads [HeartRateVariabilityRmssdRecord] data from Health Connect within the specified time range.
+     * @param start The start [Instant] of the time range.
+     * @param end The end [Instant] of the time range.
+     * @return A list of [HeartRateVariabilityRmssdRecord]s, or an empty list if an error occurs or client is null.
+     */
+    suspend fun readHeartRateVariabilityData(start: Instant, end: Instant): List<HeartRateVariabilityRmssdRecord> {
+        return readData(HeartRateVariabilityRmssdRecord::class, start, end)
+    }
+
+    /**
+     * Reads [RestingHeartRateRecord] data from Health Connect within the specified time range.
+     * @param start The start [Instant] of the time range.
+     * @param end The end [Instant] of the time range.
+     * @return A list of [RestingHeartRateRecord]s, or an empty list if an error occurs or client is null.
+     */
+    suspend fun readRestingHeartRateData(start: Instant, end: Instant): List<RestingHeartRateRecord> {
+        return readData(RestingHeartRateRecord::class, start, end)
     }
 
     /**
@@ -466,6 +488,8 @@ class HealthConnectManager @Inject constructor(
                 steps = readStepsData(start, end),
                 sleep = readSleepData(start, end),
                 heartRate = readHeartRateData(start, end),
+                heartRateVariability = readHeartRateVariabilityData(start, end),
+                restingHeartRate = readRestingHeartRateData(start, end),
                 exercise = readExerciseSessions(start, end), // Use the new method
                 distance = readDistanceData(start, end),
                 exerciseSegments = readExerciseSegments(start, end),
@@ -500,6 +524,8 @@ data class HealthData(
     val steps: List<StepsRecord> = emptyList(),
     val sleep: List<SleepSessionRecord> = emptyList(),
     val heartRate: List<HeartRateRecord> = emptyList(),
+    val heartRateVariability: List<HeartRateVariabilityRmssdRecord> = emptyList(),
+    val restingHeartRate: List<RestingHeartRateRecord> = emptyList(),
     val exercise: List<ExerciseSessionRecord> = emptyList(),
     val distance: List<DistanceRecord> = emptyList(),
     val exerciseSegments: List<ExerciseSegment> = emptyList(),

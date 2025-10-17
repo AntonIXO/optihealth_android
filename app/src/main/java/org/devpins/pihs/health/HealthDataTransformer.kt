@@ -8,6 +8,8 @@ import androidx.health.connect.client.records.ExerciseRoute
 import androidx.health.connect.client.records.ExerciseSegment
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
+import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.HydrationRecord
 import androidx.health.connect.client.records.NutritionRecord
 import androidx.health.connect.client.records.OxygenSaturationRecord
@@ -32,6 +34,8 @@ class HealthDataTransformer @Inject constructor() {
             steps = transformStepsData(healthData.steps),
             sleep = transformSleepData(healthData.sleep),
             heartRate = transformHeartRateData(healthData.heartRate),
+            heartRateVariability = transformHeartRateVariabilityData(healthData.heartRateVariability),
+            restingHeartRate = transformRestingHeartRateData(healthData.restingHeartRate),
             exercise = transformExerciseData(healthData.exercise, healthData.distance, healthData.exerciseSegments, healthData.exerciseRoutes),
             weight = transformWeightData(healthData.weight),
             bloodPressure = transformBloodPressureData(healthData.bloodPressure),
@@ -55,6 +59,26 @@ class HealthDataTransformer @Inject constructor() {
         }
     }
 
+    private fun transformHeartRateVariabilityData(hrvRecords: List<HeartRateVariabilityRmssdRecord>): List<PIHSHeartRateVariabilityData> {
+        return hrvRecords.map { record ->
+            PIHSHeartRateVariabilityData(
+                time = formatInstant(record.time),
+                zoneOffset = record.zoneOffset?.id ?: "",
+                rmssdMillis = record.heartRateVariabilityMillis
+            )
+        }
+    }
+
+    private fun transformRestingHeartRateData(restingHrRecords: List<RestingHeartRateRecord>): List<PIHSRestingHeartRateData> {
+        return restingHrRecords.map { record ->
+            PIHSRestingHeartRateData(
+                time = formatInstant(record.time),
+                zoneOffset = record.zoneOffset?.id ?: "",
+                beatsPerMinute = record.beatsPerMinute
+            )
+        }
+    }
+
     // Transform sleep data
     private fun transformSleepData(sleepRecords: List<SleepSessionRecord>): List<PIHSSleepData> {
         return sleepRecords.map { record ->
@@ -73,12 +97,15 @@ class HealthDataTransformer @Inject constructor() {
             // Process each sleep stage
             record.stages.forEach { stage ->
                 val stageDurationSeconds = stage.endTime.epochSecond - stage.startTime.epochSecond
+                val stageValue = stage.stage
 
-                when (stage.stage.toString()) {
-                    "DEEP" -> deepSleepSeconds += stageDurationSeconds
-                    "LIGHT" -> lightSleepSeconds += stageDurationSeconds
-                    "REM" -> remSleepSeconds += stageDurationSeconds
-                    "AWAKE" -> {
+                // Map stage value to type
+                // Health Connect stage values: 1=AWAKE, 2=SLEEPING, 3=OUT_OF_BED, 4=LIGHT, 5=DEEP, 6=REM
+                when (stageValue) {
+                    5 -> deepSleepSeconds += stageDurationSeconds // DEEP
+                    4 -> lightSleepSeconds += stageDurationSeconds // LIGHT
+                    6 -> remSleepSeconds += stageDurationSeconds // REM
+                    1 -> { // AWAKE
                         awakeSeconds += stageDurationSeconds
                         if (!lastStageWasAwake) {
                             awakeningsCount++
@@ -89,7 +116,7 @@ class HealthDataTransformer @Inject constructor() {
                 }
 
                 // Update lastStageWasAwake for next iteration
-                lastStageWasAwake = stage.stage.toString() == "AWAKE"
+                lastStageWasAwake = stageValue == 1
             }
 
             // Calculate total sleep duration (excluding awake time)
@@ -107,7 +134,7 @@ class HealthDataTransformer @Inject constructor() {
             // This is an approximation - time from start of session to first non-awake stage
             var sleepLatencySeconds = 0L
             if (record.stages.isNotEmpty()) {
-                val firstNonAwakeStage = record.stages.find { it.stage.toString() != "AWAKE" }
+                val firstNonAwakeStage = record.stages.find { it.stage != 1 } // 1 = AWAKE
                 if (firstNonAwakeStage != null) {
                     sleepLatencySeconds = firstNonAwakeStage.startTime.epochSecond - record.startTime.epochSecond
                 }
@@ -122,7 +149,7 @@ class HealthDataTransformer @Inject constructor() {
                     PIHSSleepStage(
                         startTime = formatInstant(stage.startTime),
                         endTime = formatInstant(stage.endTime),
-                        stage = stage.stage.toString()
+                        stage = mapSleepStageToName(stage.stage)
                     )
                 },
                 totalSleepDurationMinutes = totalSleepMinutes,
@@ -324,6 +351,19 @@ class HealthDataTransformer @Inject constructor() {
         return dateTimeFormatter.format(instant)
     }
 
+    // Map sleep stage numeric value to readable name
+    private fun mapSleepStageToName(stageValue: Int): String {
+        return when (stageValue) {
+            1 -> "awake"
+            2 -> "sleeping"
+            3 -> "out_of_bed"
+            4 -> "light"
+            5 -> "deep"
+            6 -> "rem"
+            else -> "unknown"
+        }
+    }
+
     // Map exercise type to human-readable name
     private fun mapExerciseTypeToReadableName(exerciseType: String): String {
         return when (exerciseType) {
@@ -410,6 +450,8 @@ data class PIHSHealthData(
     val steps: List<PIHSStepsData> = emptyList(),
     val sleep: List<PIHSSleepData> = emptyList(),
     val heartRate: List<PIHSHeartRateData> = emptyList(),
+    val heartRateVariability: List<PIHSHeartRateVariabilityData> = emptyList(),
+    val restingHeartRate: List<PIHSRestingHeartRateData> = emptyList(),
     val exercise: List<PIHSExerciseData> = emptyList(),
     val weight: List<PIHSWeightData> = emptyList(),
     val bloodPressure: List<PIHSBloodPressureData> = emptyList(),
@@ -461,6 +503,20 @@ data class PIHSHeartRateSample(
 @Serializable
 data class PIHSHeartRateData(
     val samples: List<PIHSHeartRateSample>
+)
+
+@Serializable
+data class PIHSHeartRateVariabilityData(
+    val time: String,
+    val zoneOffset: String,
+    val rmssdMillis: Double
+)
+
+@Serializable
+data class PIHSRestingHeartRateData(
+    val time: String,
+    val zoneOffset: String,
+    val beatsPerMinute: Long
 )
 
 @Serializable

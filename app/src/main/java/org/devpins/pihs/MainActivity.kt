@@ -401,45 +401,49 @@ fun MainScreen(
                 isLoggedIn = isLoggedIn,
                 supabaseClient = supabaseClient
             )
-            Spacer(modifier = Modifier.height(16.dp))
-            HealthConnectCard(
-                healthConnectAvailability = healthConnectAvailability,
-                permissionsGranted = permissionsGranted,
-                syncStatus = syncStatus,
-                lastSyncTime = lastSyncTime,
-                onRequestPermissions = onRequestPermissions,
-                onOpenHealthConnect = onOpenHealthConnect,
-                onSyncData = onSyncData,
-                onSyncDataInRange = onSyncDataInRange,
-                onCancelSync = onCancelSync
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            if (showLocationFeature) {
-                LocationTrackingCard(
-                    hasRequiredPermissions = hasLocationPermissions,
-                    hasBackgroundPermission = hasBackgroundLocationPermission,
-                    isTrackingActive = isLocationTrackingActive,
-                    isIgnoringBatteryOptimizations = isIgnoringBatteryOptimizations,
-                    onRequestPermissions = onRequestLocationPermissions,
-                    onRequestIgnoreBatteryOptimizations = onRequestIgnoreBatteryOptimizations,
-                    onStartTracking = onStartLocationTracking,
-                    onStopTracking = onStopLocationTracking,
-                    onOpenAppSettings = onOpenAppSettings
+            
+            // Only show other cards when user is logged in
+            if (isLoggedIn) {
+                Spacer(modifier = Modifier.height(16.dp))
+                HealthConnectCard(
+                    healthConnectAvailability = healthConnectAvailability,
+                    permissionsGranted = permissionsGranted,
+                    syncStatus = syncStatus,
+                    lastSyncTime = lastSyncTime,
+                    onRequestPermissions = onRequestPermissions,
+                    onOpenHealthConnect = onOpenHealthConnect,
+                    onSyncData = onSyncData,
+                    onSyncDataInRange = onSyncDataInRange,
+                    onCancelSync = onCancelSync
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                if (showLocationFeature) {
+                    LocationTrackingCard(
+                        hasRequiredPermissions = hasLocationPermissions,
+                        hasBackgroundPermission = hasBackgroundLocationPermission,
+                        isTrackingActive = isLocationTrackingActive,
+                        isIgnoringBatteryOptimizations = isIgnoringBatteryOptimizations,
+                        onRequestPermissions = onRequestLocationPermissions,
+                        onRequestIgnoreBatteryOptimizations = onRequestIgnoreBatteryOptimizations,
+                        onStartTracking = onStartLocationTracking,
+                        onStopTracking = onStopLocationTracking,
+                        onOpenAppSettings = onOpenAppSettings
+                    )
+                }
+                if (showUsageFeature) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    UsageStatsCard(supabaseClient = supabaseClient)
+                }
+                Spacer(modifier = Modifier.height(16.dp)) // Spacer before ExampleHealthCard
+                if (showNeiryFeature) {
+                    NeiryCard()
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+                ExampleHealthCard(
+                    onUploadSampleData = onUploadSampleData,
+                    onUploadEmptyData = onUploadEmptyData
                 )
             }
-            if (showUsageFeature) {
-                Spacer(modifier = Modifier.height(16.dp))
-                UsageStatsCard(supabaseClient = supabaseClient)
-            }
-            Spacer(modifier = Modifier.height(16.dp)) // Spacer before ExampleHealthCard
-            if (showNeiryFeature) {
-                NeiryCard()
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-            ExampleHealthCard(
-                onUploadSampleData = onUploadSampleData,
-                onUploadEmptyData = onUploadEmptyData
-            )
         }
     }
 }
