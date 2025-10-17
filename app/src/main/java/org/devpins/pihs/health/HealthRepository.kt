@@ -620,6 +620,33 @@ private fun transformPihsToDataPoints(
         }
     }
 
+    // Resting Heart Rate
+    pihsHealthData.restingHeartRate.forEach { restingHrData ->
+        if (restingHrData.beatsPerMinute > 0) {
+            val tags = if (restingHrData.zoneOffset.isNotEmpty()) {
+                buildJsonObject {
+                    put("zone_offset", restingHrData.zoneOffset)
+                }
+            } else {
+                null
+            }
+
+            dataPoints.add(
+                org.devpins.pihs.data.model.DataPoint(
+                    metricSourceId = metricSourceId,
+                    timestamp = restingHrData.time,
+                    metricName = "hr_resting",
+                    valueNumeric = restingHrData.beatsPerMinute.toDouble(),
+                    valueText = null,
+                    valueJson = null,
+                    unit = "bpm",
+                    tags = tags,
+                    valueGeography = null
+                )
+            )
+        }
+    }
+
     // Blood Pressure
     pihsHealthData.bloodPressure.forEach { bpData ->
         if (bpData.systolic > 0 && bpData.diastolic > 0) {
@@ -740,7 +767,7 @@ private fun transformPihsToDataPoints(
                 org.devpins.pihs.data.model.DataPoint(
                     metricSourceId = metricSourceId,
                     timestamp = hydrationData.endTime,
-                    metricName = "hydration_intake_liters",
+                    metricName = "hydration",
                     valueNumeric = hydrationData.volume,
                     valueText = null,
                     valueJson = null,
