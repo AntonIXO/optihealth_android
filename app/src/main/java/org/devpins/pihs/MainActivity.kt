@@ -188,6 +188,7 @@ class MainActivity : ComponentActivity() {
             var isUsageTrackingEnabled by remember { mutableStateOf(settingsPreferences.getBoolean(KEY_ENABLE_USAGE, true)) }
             var isLocationFeatureEnabled by remember { mutableStateOf(settingsPreferences.getBoolean(KEY_ENABLE_LOCATION, true)) }
             var isNeiryEnabled by remember { mutableStateOf(settingsPreferences.getBoolean(SettingsKeys.KEY_ENABLE_NEIRY, false)) }
+            var showTestUpload by remember { mutableStateOf(settingsPreferences.getBoolean(SettingsKeys.KEY_SHOW_TEST_UPLOAD, false)) }
 
             val healthPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
                 contract = healthRepository.getPermissionRequestContract(),
@@ -222,6 +223,7 @@ class MainActivity : ComponentActivity() {
                     isUsageTrackingEnabled = settingsPreferences.getBoolean(KEY_ENABLE_USAGE, false)
                     isLocationFeatureEnabled = settingsPreferences.getBoolean(KEY_ENABLE_LOCATION, true)
                     isNeiryEnabled = settingsPreferences.getBoolean(SettingsKeys.KEY_ENABLE_NEIRY, false)
+                    showTestUpload = settingsPreferences.getBoolean(SettingsKeys.KEY_SHOW_TEST_UPLOAD, false)
                 }
             )
 
@@ -272,6 +274,7 @@ class MainActivity : ComponentActivity() {
                     showLocationFeature = isLocationFeatureEnabled,
                     showUsageFeature = isUsageTrackingEnabled,
                     showNeiryFeature = isNeiryEnabled,
+                    showTestUpload = showTestUpload,
                     onOpenSettings = {
                         val intent = Intent(context, org.devpins.pihs.settings.SettingsActivity::class.java)
                         settingsLauncher.launch(intent)

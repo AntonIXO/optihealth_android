@@ -67,6 +67,7 @@ fun HomeScreen(
     showLocationFeature: Boolean = true,
     showUsageFeature: Boolean = true,
     showNeiryFeature: Boolean = false,
+    showTestUpload: Boolean = false,
     onOpenSettings: () -> Unit = {},
     onRequestLocationPermissions: () -> Unit = {},
     onRequestIgnoreBatteryOptimizations: () -> Unit = {},
@@ -100,18 +101,6 @@ fun HomeScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(24.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedButton(onClick = onOpenSettings, shape = RoundedCornerShape(8.dp)) {
-                    Icon(imageVector = Icons.Filled.Settings, contentDescription = "Settings")
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "Settings")
-                }
-            }
-            Spacer(modifier = Modifier.height(16.dp))
             AuthenticationCard(
                 isLoggedIn = isLoggedIn,
                 supabaseClient = supabaseClient
@@ -149,15 +138,17 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                     UsageStatsCard(supabaseClient = supabaseClient)
                 }
-                Spacer(modifier = Modifier.height(16.dp))
                 if (showNeiryFeature) {
-                    NeiryCard()
                     Spacer(modifier = Modifier.height(16.dp))
+                    NeiryCard()
                 }
-                ExampleHealthCard(
-                    onUploadSampleData = onUploadSampleData,
-                    onUploadEmptyData = onUploadEmptyData
-                )
+                if (showTestUpload) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    ExampleHealthCard(
+                        onUploadSampleData = onUploadSampleData,
+                        onUploadEmptyData = onUploadEmptyData
+                    )
+                }
             }
         }
     }

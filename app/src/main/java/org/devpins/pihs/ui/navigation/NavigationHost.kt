@@ -16,6 +16,7 @@ import org.devpins.pihs.health.HealthConnectAvailability
 import org.devpins.pihs.health.SyncStatus
 import org.devpins.pihs.ui.screens.HomeScreen
 import org.devpins.pihs.ui.screens.ManualDataEntryScreen
+import org.devpins.pihs.ui.screens.SettingsScreen
 import java.time.Instant
 
 @Composable
@@ -38,6 +39,7 @@ fun NavigationHost(
     showLocationFeature: Boolean,
     showUsageFeature: Boolean,
     showNeiryFeature: Boolean,
+    showTestUpload: Boolean,
     onOpenSettings: () -> Unit,
     onRequestLocationPermissions: () -> Unit,
     onRequestIgnoreBatteryOptimizations: () -> Unit,
@@ -103,6 +105,7 @@ fun NavigationHost(
                     showLocationFeature = showLocationFeature,
                     showUsageFeature = showUsageFeature,
                     showNeiryFeature = showNeiryFeature,
+                    showTestUpload = showTestUpload,
                     onOpenSettings = onOpenSettings,
                     onRequestLocationPermissions = onRequestLocationPermissions,
                     onRequestIgnoreBatteryOptimizations = onRequestIgnoreBatteryOptimizations,
@@ -117,6 +120,10 @@ fun NavigationHost(
 
             composable(Screen.ManualData.route) {
                 ManualDataEntryScreen()
+            }
+            
+            composable(Screen.Settings.route) {
+                SettingsScreen()
             }
         }
     }
