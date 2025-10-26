@@ -6,6 +6,7 @@ import io.github.jan.supabase.postgrest.Postgrest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.buildJsonArray
@@ -308,6 +309,7 @@ class HealthRepository @Inject constructor(
     }
 
     // Get information about the metric source
+    @OptIn(ExperimentalSerializationApi::class)
     private suspend fun getMetricSourceInfo(userId: String): MetricSourceInfo {
         try {
             // Try to find an existing Health Connect metric source
