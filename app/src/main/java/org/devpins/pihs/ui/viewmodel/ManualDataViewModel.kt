@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
+import org.devpins.pihs.data.local.MetricUsagePreferences
 import org.devpins.pihs.data.model.DataPoint
 import org.devpins.pihs.data.model.MetricDefinition
 import org.devpins.pihs.data.repository.ManualDataRepository
@@ -33,7 +34,8 @@ sealed class SubmissionState {
 @HiltViewModel
 class ManualDataViewModel @Inject constructor(
     private val metricDefinitionsRepository: MetricDefinitionsRepository,
-    private val manualDataRepository: ManualDataRepository
+    private val manualDataRepository: ManualDataRepository,
+    private val metricUsagePreferences: MetricUsagePreferences
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<ManualDataUiState>(ManualDataUiState.Loading)
@@ -51,12 +53,21 @@ class ManualDataViewModel @Inject constructor(
             _uiState.value = ManualDataUiState.Loading
             when (val result = metricDefinitionsRepository.getMetricDefinitions()) {
                 is MetricDefinitionsResult.Success -> {
-                    _uiState.value = ManualDataUiState.Success(result.metrics)
+                    // Sort metrics by usage count (most used first)
+                    val sortedMetrics = sortMetricsByUsage(result.metrics)
+                    _uiState.value = ManualDataUiState.Success(sortedMetrics)
                 }
                 is MetricDefinitionsResult.Error -> {
                     _uiState.value = ManualDataUiState.Error(result.message)
                 }
             }
+        }
+    }
+
+    private fun sortMetricsByUsage(metrics: List<MetricDefinition>): List<MetricDefinition> {
+        val usageCounts = metricUsagePreferences.getAllMetricUsageCounts()
+        return metrics.sortedByDescending { metric ->
+            usageCounts[metric.metricName] ?: 0
         }
     }
 
@@ -89,6 +100,10 @@ class ManualDataViewModel @Inject constructor(
 
             when (val result = manualDataRepository.insertManualDataPoint(dataPoint)) {
                 is ManualDataResult.Success -> {
+                    // Increment usage count for this metric
+                    metricUsagePreferences.incrementMetricUsage(metricDefinition.metricName)
+                    // Reload metrics to update sorting
+                    loadMetricDefinitions()
                     _submissionState.value = SubmissionState.Success(result.message)
                 }
                 is ManualDataResult.Error -> {

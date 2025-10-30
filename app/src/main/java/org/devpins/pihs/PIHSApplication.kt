@@ -8,6 +8,7 @@ import androidx.work.Configuration
 import androidx.work.WorkManager
 import dagger.hilt.android.HiltAndroidApp
 import org.devpins.pihs.background.BackgroundSyncController
+import org.devpins.pihs.location.LocationManager
 import org.devpins.pihs.settings.SettingsKeys
 import javax.inject.Inject
 
@@ -22,6 +23,9 @@ class PIHSApplication : Application(), Configuration.Provider {
 
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
+
+    @Inject
+    lateinit var locationManager: LocationManager
 
     private val TAG = "PIHSApplication"
 
@@ -49,6 +53,21 @@ class PIHSApplication : Application(), Configuration.Provider {
             BackgroundSyncController.schedulePeriodicSyncWorkers(this)
         } else {
             BackgroundSyncController.disable(this)
+        }
+
+        // Initialize location polling if it was previously enabled
+        Log.d(TAG, "Application onCreate - Checking location polling status")
+        val locationPrefs = getSharedPreferences("LocationTrackingPrefs", Context.MODE_PRIVATE)
+        val isLocationTrackingActive = locationPrefs.getBoolean("is_tracking_active", false)
+        if (isLocationTrackingActive) {
+            Log.i(TAG, "Location polling was previously active, ensuring WorkManager work is enqueued")
+            // Check if permissions are still granted before re-enqueueing
+            if (locationManager.hasRequiredPermissions() && locationManager.hasBackgroundLocationPermission()) {
+                locationManager.startLocationTracking()
+                Log.i(TAG, "Location polling work re-enqueued on app start")
+            } else {
+                Log.w(TAG, "Location polling was active but permissions are no longer granted")
+            }
         }
     }
 }

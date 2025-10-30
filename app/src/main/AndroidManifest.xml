@@ -5,14 +5,15 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
 
-    <!-- Location permissions -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Location permissions for low-power polling -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <!-- Bluetooth for Neiry headband (BLE) -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
@@ -103,23 +104,20 @@
             </intent-filter>
         </service>
 
-        <!-- Location tracking service -->
-        <service
-            android:name=".location.LocationTrackingService"
-            android:foregroundServiceType="location"
+        <!-- Boot receiver for location polling persistence -->
+        <receiver
+            android:name=".location.LocationBootReceiver"
             android:enabled="true"
-            android:exported="false"
-            android:permission="android.permission.FOREGROUND_SERVICE"
-            tools:targetApi="34">
-            <meta-data
-                android:name="android.foregroundService.type"
-                android:value="location" />
-        </service>
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
     <activity
         android:name=".ui.activity.CsvImportActivity"
         android:exported="true"
-        android:label="Import to OptiHealth"
+        android:label="Import to optiHealth"
         android:theme="@style/Theme.AppCompat.Translucent">
         <intent-filter>
         <action android:name="android.intent.action.SEND" />

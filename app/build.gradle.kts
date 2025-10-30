@@ -65,7 +65,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
 
     // Supabase - using the correct package names
-    val supabaseVersion = "3.2.2" // Consolidate version
+    val supabaseVersion = "3.2.5" // Consolidate version
     implementation(platform("io.github.jan-tennert.supabase:bom:$supabaseVersion"))
     implementation("io.github.jan-tennert.supabase:postgrest-kt")
     implementation("io.github.jan-tennert.supabase:auth-kt")
@@ -78,14 +78,14 @@ dependencies {
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
     // Ktor
-    val ktorVersion = "3.2.3" // Updated Ktor version
+    val ktorVersion = "3.3.1" // Updated Ktor version
     implementation("io.ktor:ktor-client-core:$ktorVersion")
     implementation("io.ktor:ktor-client-okhttp:$ktorVersion") // Or ktor-client-android
     implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion") // For content negotiation
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion") // For JSON serialization with Ktor
 
     // Health Connect
-    implementation("androidx.health.connect:connect-client:1.1.0-rc03")
+    implementation("androidx.health.connect:connect-client:1.1.0")
 
     // Hilt for Dependency Injection
     implementation("com.google.dagger:hilt-android:2.56.2") // Check for latest Hilt version
@@ -98,14 +98,21 @@ dependencies {
 
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.10.3") // Use the latest version
+    
+    // Guava for WorkManager ListenableFuture
+    implementation("com.google.guava:guava:33.5.0-android")
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.0")
 
     // Google Play Services Location for Fused Location Provider
     implementation("com.google.android.gms:play-services-location:21.3.0")
+    
+    // Coroutines for Google Play Services (for .await() extension)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
 
-    implementation("com.github.luben:zstd-jni:1.5.7-4@aar")
-    testImplementation("com.github.luben:zstd-jni:1.5.7-4")
+    implementation("com.github.luben:zstd-jni:1.5.7-6@aar")
+    testImplementation("com.github.luben:zstd-jni:1.5.7-6")
 
     // Neiry
     implementation(files("libs/capsuleService-embedded-release.aar"))

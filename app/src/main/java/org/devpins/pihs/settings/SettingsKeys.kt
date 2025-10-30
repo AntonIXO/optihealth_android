@@ -18,4 +18,7 @@ object SettingsKeys {
 
     // Neiry Headband BCI
     const val KEY_ENABLE_NEIRY = "enable_neiry"
+    
+    // UI Options
+    const val KEY_SHOW_TEST_UPLOAD = "show_test_upload"
 }

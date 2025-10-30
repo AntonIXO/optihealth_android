@@ -38,9 +38,7 @@ fun LocationTrackingCard(
     onStartTracking: () -> Unit,
     onStopTracking: () -> Unit,
     onOpenAppSettings: () -> Unit,
-    modifier: Modifier = Modifier,
-    isIgnoringBatteryOptimizations: Boolean,
-    onRequestIgnoreBatteryOptimizations: () -> Unit
+    modifier: Modifier = Modifier
 ) {
     ElevatedCard(
         modifier = modifier.fillMaxWidth(),
@@ -119,9 +117,17 @@ fun LocationTrackingCard(
             } else {
                 // All permissions granted, show tracking controls
                 Text(
-                    text = "PIHS will track significant location changes (>0.5km) where you remain stable for at least 5 minutes.",
+                    text = "Low-power location polling automatically discovers significant places like Home and Work. Polls approximately every 30 minutes using Wi-Fi and cell towers (no GPS).",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Text(
+                    text = "• Battery-efficient: Only when battery is not low\n• Network-aware: Only when connected\n• No foreground service notification",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
                 )
                 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -132,8 +138,9 @@ fun LocationTrackingCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Location Tracking",
-                        style = MaterialTheme.typography.bodyLarge
+                        text = "Location Polling",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium
                     )
                     
                     Switch(
@@ -146,29 +153,6 @@ fun LocationTrackingCard(
                             }
                         }
                     )
-                }
-
-                // Battery Optimization Section
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "Battery Optimization: ${if (isIgnoringBatteryOptimizations) "Exempt" else "Not Exempt"}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (isIgnoringBatteryOptimizations) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.error
-                )
-                if (!isIgnoringBatteryOptimizations) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "If tracking stops unexpectedly, exempting the app from battery optimizations may help improve reliability.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = onRequestIgnoreBatteryOptimizations,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Manage Battery Optimization")
-                    }
                 }
             }
             
