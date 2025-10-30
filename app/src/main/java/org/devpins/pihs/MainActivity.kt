@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
@@ -125,9 +126,6 @@ class MainActivity : ComponentActivity() {
 
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
 
-    private lateinit var requiredLocationPermissionLauncher: ActivityResultLauncher<Array<String>>
-    private lateinit var backgroundLocationPermissionLauncher: ActivityResultLauncher<String>
-
     private val sharedPreferences by lazy {
         getSharedPreferences("LocationTrackingPrefs", Context.MODE_PRIVATE)
     }
@@ -146,25 +144,6 @@ class MainActivity : ComponentActivity() {
         }
         enableEdgeToEdge()
 
-        var hasLocationPermissions by mutableStateOf(locationManager.hasRequiredPermissions())
-        var hasBackgroundLocationPermission by mutableStateOf(locationManager.hasBackgroundLocationPermission())
-
-        val (requiredLauncher, backgroundLauncher) = locationManager.registerPermissionLaunchers(
-            activity = this,
-            onRequiredPermissionsResult = { allGranted ->
-                Log.d("PermissionRequest", "Required permissions granted: $allGranted")
-                hasLocationPermissions = allGranted
-                // Check background permission status again, as granting fine/coarse might affect it
-                hasBackgroundLocationPermission = locationManager.hasBackgroundLocationPermission()
-            },
-            onBackgroundPermissionResult = { granted ->
-                Log.d("PermissionRequest", "Background permission granted: $granted")
-                hasBackgroundLocationPermission = granted
-            }
-        )
-        requiredLocationPermissionLauncher = requiredLauncher
-        backgroundLocationPermissionLauncher = backgroundLauncher
-
         setContent {
             val scope = rememberCoroutineScope()
             val context = LocalContext.current
@@ -177,18 +156,36 @@ class MainActivity : ComponentActivity() {
             val sessionStatus by supabaseClient.auth.sessionStatus.collectAsState()
             val isLoggedIn = sessionStatus is SessionStatus.Authenticated
 
-            // The state variables are already declared above setContent
-            // var hasLocationPermissions by remember { mutableStateOf(locationManager.hasRequiredPermissions()) }
-            // var hasBackgroundLocationPermission by remember { mutableStateOf(locationManager.hasBackgroundLocationPermission()) }
+            // Location permission states
+            var hasLocationPermissions by remember { mutableStateOf(locationManager.hasRequiredPermissions()) }
+            var hasBackgroundLocationPermission by remember { mutableStateOf(locationManager.hasBackgroundLocationPermission()) }
             var isLocationTrackingActive by remember {
-                mutableStateOf(sharedPreferences.getBoolean(PREF_KEY_TRACKING_ACTIVE, false))
+                mutableStateOf(locationManager.isLocationTrackingActive())
             }
-            var isIgnoringBatteryOptimizations by remember { mutableStateOf(locationManager.isIgnoringBatteryOptimizations()) }
 
             var isUsageTrackingEnabled by remember { mutableStateOf(settingsPreferences.getBoolean(KEY_ENABLE_USAGE, true)) }
             var isLocationFeatureEnabled by remember { mutableStateOf(settingsPreferences.getBoolean(KEY_ENABLE_LOCATION, true)) }
             var isNeiryEnabled by remember { mutableStateOf(settingsPreferences.getBoolean(SettingsKeys.KEY_ENABLE_NEIRY, false)) }
             var showTestUpload by remember { mutableStateOf(settingsPreferences.getBoolean(SettingsKeys.KEY_SHOW_TEST_UPLOAD, false)) }
+
+            // Location permission launchers
+            val requiredLocationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.RequestMultiplePermissions(),
+                onResult = { permissions ->
+                    val allGranted = permissions.values.all { it }
+                    Log.d("PermissionRequest", "Required permissions granted: $allGranted")
+                    hasLocationPermissions = allGranted
+                    hasBackgroundLocationPermission = locationManager.hasBackgroundLocationPermission()
+                }
+            )
+
+            val backgroundLocationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.RequestPermission(),
+                onResult = { granted ->
+                    Log.d("PermissionRequest", "Background permission granted: $granted")
+                    hasBackgroundLocationPermission = granted
+                }
+            )
 
             val healthPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
                 contract = healthRepository.getPermissionRequestContract(),
@@ -204,16 +201,7 @@ class MainActivity : ComponentActivity() {
                 onResult = {
                     hasLocationPermissions = locationManager.hasRequiredPermissions()
                     hasBackgroundLocationPermission = locationManager.hasBackgroundLocationPermission()
-                    isIgnoringBatteryOptimizations = locationManager.isIgnoringBatteryOptimizations()
-                }
-            )
-
-            val batteryOptimizationLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-                contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
-                onResult = {
-                    // Refresh the state after returning from the settings screen
-                    isIgnoringBatteryOptimizations = locationManager.isIgnoringBatteryOptimizations()
-                    Log.d("MainActivity", "Returned from battery optimization settings. Is ignoring: $isIgnoringBatteryOptimizations")
+                    isLocationTrackingActive = locationManager.isLocationTrackingActive()
                 }
             )
 
@@ -227,16 +215,6 @@ class MainActivity : ComponentActivity() {
                 }
             )
 
-            val onRequestIgnoreBatteryOptimizations = {
-                val intent = locationManager.getRequestIgnoreBatteryOptimizationsIntent()
-                if (intent != null) {
-                    batteryOptimizationLauncher.launch(intent)
-                } else {
-                    Toast.makeText(context, "Battery optimization settings not available on this Android version.", Toast.LENGTH_LONG).show()
-                    Log.w("MainActivity", "Battery optimization intent is null.")
-                }
-                Unit // Explicitly return Unit
-            }
 
             PIHSTheme {
                 NavigationHost(
@@ -270,7 +248,6 @@ class MainActivity : ComponentActivity() {
                     hasLocationPermissions = hasLocationPermissions,
                     hasBackgroundLocationPermission = hasBackgroundLocationPermission,
                     isLocationTrackingActive = isLocationTrackingActive,
-                    isIgnoringBatteryOptimizations = isIgnoringBatteryOptimizations,
                     showLocationFeature = isLocationFeatureEnabled,
                     showUsageFeature = isUsageTrackingEnabled,
                     showNeiryFeature = isNeiryEnabled,
@@ -281,16 +258,17 @@ class MainActivity : ComponentActivity() {
                     },
                     onRequestLocationPermissions = {
                         if (!hasLocationPermissions) {
-                            Log.d("PermissionRequest", "Requesting required foreground permissions.")
-                            locationManager.requestRequiredPermissions(requiredLocationPermissionLauncher)
+                            Log.d("PermissionRequest", "Requesting coarse location permission.")
+                            requiredLocationPermissionLauncher.launch(LocationManager.REQUIRED_PERMISSIONS)
                         } else if (!hasBackgroundLocationPermission) {
                             Log.d("PermissionRequest", "Requesting background location permission.")
-                            locationManager.requestBackgroundLocationPermission(backgroundLocationPermissionLauncher)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                backgroundLocationPermissionLauncher.launch(LocationManager.BACKGROUND_LOCATION_PERMISSION)
+                            }
                         } else {
                             Toast.makeText(context, "All location permissions already granted.", Toast.LENGTH_SHORT).show()
                         }
                     },
-                    onRequestIgnoreBatteryOptimizations = onRequestIgnoreBatteryOptimizations,
                     onStartLocationTracking = {
                         locationManager.startLocationTracking()
                         isLocationTrackingActive = true

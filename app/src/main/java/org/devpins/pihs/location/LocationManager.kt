@@ -1,26 +1,33 @@
 package org.devpins.pihs.location
 
 import android.Manifest
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * Manages location-related functionalities including permission checking,
- * requesting permissions, and starting/stopping the location tracking service.
- * It handles differences in permission requirements based on Android SDK version.
+ * requesting permissions, and starting/stopping low-power location polling via WorkManager.
+ * 
+ * This manager uses WorkManager to periodically poll location with battery-efficient settings:
+ * - Polls approximately every 30 minutes (inexact interval)
+ * - Only runs when battery is not low and network is connected
+ * - Uses PRIORITY_BALANCED_POWER_ACCURACY (no GPS, ~100m-300m accuracy)
  *
  * @property context The application context, injected by Hilt.
  */
@@ -33,30 +40,26 @@ class LocationManager @Inject constructor(
 
         /**
          * Array of required location permissions.
-         * For Android 13 (TIRAMISU) and above, this includes [Manifest.permission.POST_NOTIFICATIONS]
-         * in addition to [Manifest.permission.ACCESS_FINE_LOCATION] and [Manifest.permission.ACCESS_COARSE_LOCATION].
-         * For older versions, it only includes fine and coarse location permissions.
+         * Prioritizes coarse location for battery efficiency.
+         * ACCESS_COARSE_LOCATION is sufficient for PRIORITY_BALANCED_POWER_ACCURACY.
          */
-        val REQUIRED_PERMISSIONS = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            arrayOf(
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.POST_NOTIFICATIONS
-            )
-        } else {
-            arrayOf(
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION
-            )
-        }
+        val REQUIRED_PERMISSIONS = arrayOf(
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
         
         // Background location permission (separate because it requires special handling)
         /**
          * Constant for the background location permission ([Manifest.permission.ACCESS_BACKGROUND_LOCATION]).
          * This permission is requested separately for Android Q (10) and above.
+         * Required for location polling to work when app is not in use.
          */
         const val BACKGROUND_LOCATION_PERMISSION = Manifest.permission.ACCESS_BACKGROUND_LOCATION
+        
+        // WorkManager configuration
+        private const val POLLING_INTERVAL_MINUTES = 30L
     }
+    
+    private val workManager = WorkManager.getInstance(context)
 
     /**
      * Checks if all permissions defined in [REQUIRED_PERMISSIONS] have been granted.
@@ -90,61 +93,6 @@ class LocationManager @Inject constructor(
     }
 
     /**
-     * Registers activity result launchers for handling permission requests for both
-     * required foreground permissions and the background location permission.
-     *
-     * @param activity The [Activity] (must be a [androidx.activity.ComponentActivity]) to register the launchers with.
-     * @param onRequiredPermissionsResult A callback function that receives a boolean indicating if all required foreground permissions were granted.
-     * @param onBackgroundPermissionResult A callback function that receives a boolean indicating if the background location permission was granted.
-     * @return A [Pair] containing two [ActivityResultLauncher] instances:
-     *         - The first launcher is for the array of [REQUIRED_PERMISSIONS].
-     *         - The second launcher is for the single [BACKGROUND_LOCATION_PERMISSION].
-     */
-    fun registerPermissionLaunchers(
-        activity: Activity,
-        onRequiredPermissionsResult: (Boolean) -> Unit,
-        onBackgroundPermissionResult: (Boolean) -> Unit
-    ): Pair<ActivityResultLauncher<Array<String>>, ActivityResultLauncher<String>> {
-        
-        // Launcher for required permissions
-        val requiredPermissionsLauncher = (activity as androidx.activity.ComponentActivity)
-            .registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
-                val allGranted = permissions.entries.all { it.value }
-                onRequiredPermissionsResult(allGranted)
-            }
-        
-        // Launcher for background location permission (needs to be requested separately)
-        val backgroundPermissionLauncher = activity
-            .registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-                onBackgroundPermissionResult(isGranted)
-            }
-        
-        return Pair(requiredPermissionsLauncher, backgroundPermissionLauncher)
-    }
-
-    /**
-     * Requests the set of [REQUIRED_PERMISSIONS] using the provided launcher.
-     *
-     * @param permissionLauncher The [ActivityResultLauncher] for an array of permission strings.
-     */
-    fun requestRequiredPermissions(permissionLauncher: ActivityResultLauncher<Array<String>>) {
-        permissionLauncher.launch(REQUIRED_PERMISSIONS)
-    }
-
-    /**
-     * Requests the [BACKGROUND_LOCATION_PERMISSION] using the provided launcher.
-     * This should only be called after [REQUIRED_PERMISSIONS] have been granted.
-     * This function has an effect only on Android Q (10) and above.
-     *
-     * @param permissionLauncher The [ActivityResultLauncher] for a single permission string.
-     */
-    fun requestBackgroundLocationPermission(permissionLauncher: ActivityResultLauncher<String>) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            permissionLauncher.launch(BACKGROUND_LOCATION_PERMISSION)
-        }
-    }
-
-    /**
      * Creates an [Intent] to open the application's details settings screen.
      * This allows users to manually change app permissions if they have been permanently denied.
      *
@@ -158,37 +106,67 @@ class LocationManager @Inject constructor(
     }
 
     /**
-     * Starts the [LocationTrackingService].
-     * For Android O (8.0) and above, it starts the service as a foreground service.
-     * For older versions, it uses `startService`.
+     * Starts low-power location polling using WorkManager.
+     * Creates a periodic work request that runs approximately every 30 minutes.
+     * The work is constrained to run only when:
+     * - Device has network connectivity
+     * - Battery is not low
      */
     fun startLocationTracking() {
-        Log.i(TAG, "Starting location tracking service")
-        val intent = Intent(context, LocationTrackingService::class.java).apply {
-            action = LocationTrackingService.ACTION_START_LOCATION_TRACKING
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent)
-        } else {
-            context.startService(intent)
-        }
+        Log.i(TAG, "Starting location polling via WorkManager")
+        
+        // Define constraints for battery-efficient polling
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED) // Only run if device has internet
+            .setRequiresBatteryNotLow(true) // Do not run if battery is dying
+            .build()
+        
+        // Create periodic work request with ~30 minute interval (inexact)
+        val locationPollingRequest = PeriodicWorkRequestBuilder<LocationPollingWorker>(
+            POLLING_INTERVAL_MINUTES,
+            TimeUnit.MINUTES
+        )
+            .setConstraints(constraints)
+            .build()
+        
+        // Enqueue the work with KEEP policy (keeps existing work if already scheduled)
+        workManager.enqueueUniquePeriodicWork(
+            LocationPollingWorker.UNIQUE_WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            locationPollingRequest
+        )
+        
+        Log.i(TAG, "Location polling work enqueued with KEEP policy")
     }
 
     /**
-     * Stops the [LocationTrackingService].
+     * Stops location polling by canceling the WorkManager periodic work.
      */
     fun stopLocationTracking() {
-        Log.i(TAG, "Stopping location tracking service")
-        val intent = Intent(context, LocationTrackingService::class.java).apply {
-            action = LocationTrackingService.ACTION_STOP_LOCATION_TRACKING
+        Log.i(TAG, "Stopping location polling via WorkManager")
+        workManager.cancelUniqueWork(LocationPollingWorker.UNIQUE_WORK_NAME)
+        Log.i(TAG, "Location polling work cancelled")
+    }
+
+    /**
+     * Checks if location polling is currently active.
+     * @return true if the periodic work is enqueued or running, false otherwise
+     */
+    fun isLocationTrackingActive(): Boolean {
+        return try {
+            val workInfos = workManager.getWorkInfosForUniqueWork(LocationPollingWorker.UNIQUE_WORK_NAME).get()
+            workInfos.any { 
+                it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING 
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking location tracking status", e)
+            false
         }
-        context.startService(intent)
     }
 
     /**
      * Checks if both required foreground and background location permissions are granted.
-     * If they are, it starts the location tracking service.
+     * If they are, it starts the location polling.
      *
      * @return `true` if all necessary permissions were granted and tracking was started, `false` otherwise.
      */
@@ -205,29 +183,5 @@ class LocationManager @Inject constructor(
         
         startLocationTracking()
         return true
-    }
-
-    /**
-     * Checks if the app is currently ignoring battery optimizations.
-     */
-    fun isIgnoringBatteryOptimizations(): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-            return powerManager.isIgnoringBatteryOptimizations(context.packageName)
-        }
-        return true // Before Marshmallow, this concept didn't exist in this form.
-    }
-
-    /**
-     * Creates an intent to request the user to disable battery optimizations for the app.
-     * Returns null if the Android version is below Marshmallow (API 23).
-     */
-    fun getRequestIgnoreBatteryOptimizationsIntent(): Intent? {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-            intent.data = Uri.parse("package:${context.packageName}")
-            return intent
-        }
-        return null
     }
 }

@@ -98,11 +98,17 @@ dependencies {
 
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.10.3") // Use the latest version
+    
+    // Guava for WorkManager ListenableFuture
+    implementation("com.google.guava:guava:33.0.0-android")
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 
     // Google Play Services Location for Fused Location Provider
     implementation("com.google.android.gms:play-services-location:21.3.0")
+    
+    // Coroutines for Google Play Services (for .await() extension)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.0")
 
     implementation("com.github.luben:zstd-jni:1.5.7-4@aar")
     testImplementation("com.github.luben:zstd-jni:1.5.7-4")
