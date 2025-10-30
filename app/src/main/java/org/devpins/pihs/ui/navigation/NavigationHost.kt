@@ -14,9 +14,12 @@ import androidx.navigation.compose.rememberNavController
 import io.github.jan.supabase.SupabaseClient
 import org.devpins.pihs.health.HealthConnectAvailability
 import org.devpins.pihs.health.SyncStatus
+import org.devpins.pihs.ui.screens.AddProductWizardScreen
+import org.devpins.pihs.ui.screens.CabinetScreen
 import org.devpins.pihs.ui.screens.HomeScreen
 import org.devpins.pihs.ui.screens.ManualDataEntryScreen
 import org.devpins.pihs.ui.screens.SettingsScreen
+import org.devpins.pihs.ui.screens.SupplementDashboardScreen
 import java.time.Instant
 
 @Composable
@@ -116,6 +119,33 @@ fun NavigationHost(
 
             composable(Screen.ManualData.route) {
                 ManualDataEntryScreen()
+            }
+            
+            composable(Screen.Supplements.route) {
+                SupplementDashboardScreen(
+                    onNavigateToCabinet = {
+                        navController.navigate(Screen.Cabinet.route)
+                    }
+                )
+            }
+            
+            composable(Screen.Cabinet.route) {
+                CabinetScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    onNavigateToAddProduct = {
+                        navController.navigate(Screen.AddProduct.route)
+                    }
+                )
+            }
+            
+            composable(Screen.AddProduct.route) {
+                AddProductWizardScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
             }
             
             composable(Screen.Settings.route) {
