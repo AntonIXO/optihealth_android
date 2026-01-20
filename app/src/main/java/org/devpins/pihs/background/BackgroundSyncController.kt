@@ -30,8 +30,16 @@ object BackgroundSyncController {
     /**
      * Schedule periodic sync workers based on the user-configured interval (in minutes).
      * Ensures minimum interval of 15 minutes as required by WorkManager.
+     *
+     * @param context The application context.
+     * @param policy The conflict policy to use (default REPLACE).
+     *               Use [ExistingPeriodicWorkPolicy.REPLACE] when settings change.
+     *               Use [ExistingPeriodicWorkPolicy.KEEP] on app startup to avoid resetting the schedule.
      */
-    fun schedulePeriodicSyncWorkers(context: Context) {
+    fun schedulePeriodicSyncWorkers(
+        context: Context,
+        policy: ExistingPeriodicWorkPolicy = ExistingPeriodicWorkPolicy.REPLACE
+    ) {
         val workManager = WorkManager.getInstance(context.applicationContext)
         val prefs = context.getSharedPreferences(SettingsKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
         val configuredMinutes = prefs.getInt(SettingsKeys.KEY_SYNC_INTERVAL_MINUTES, 24 * 60)
@@ -59,7 +67,7 @@ object BackgroundSyncController {
 
         workManager.enqueueUniquePeriodicWork(
             HealthDataSyncWorker.WORK_NAME,
-            ExistingPeriodicWorkPolicy.REPLACE,
+            policy,
             healthSyncRequest
         )
 
@@ -73,7 +81,7 @@ object BackgroundSyncController {
 
         workManager.enqueueUniquePeriodicWork(
             UsageDataSyncWorker.WORK_NAME,
-            ExistingPeriodicWorkPolicy.REPLACE,
+            policy,
             usageSyncRequest
         )
     }

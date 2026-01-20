@@ -5,6 +5,7 @@ import android.util.Log
 import android.content.Context
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.WorkManager
 import dagger.hilt.android.HiltAndroidApp
 import org.devpins.pihs.background.BackgroundSyncController
@@ -50,7 +51,7 @@ class PIHSApplication : Application(), Configuration.Provider {
         val enabled = prefs.getBoolean(SettingsKeys.KEY_ENABLE_BACKGROUND_SYNC, true)
         Log.i(TAG, "Background sync enabled setting: $enabled")
         if (enabled) {
-            BackgroundSyncController.schedulePeriodicSyncWorkers(this)
+            BackgroundSyncController.schedulePeriodicSyncWorkers(this, ExistingPeriodicWorkPolicy.KEEP)
         } else {
             BackgroundSyncController.disable(this)
         }
