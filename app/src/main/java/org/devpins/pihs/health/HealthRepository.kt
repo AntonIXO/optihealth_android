@@ -428,10 +428,11 @@ class HealthRepository @Inject constructor(
         // Note: metricSourceInfo.id is the metric_source_id for health_connect_android.
         // If events need a different source_id, this needs adjustment. For now, assume they relate to the same source.
 
-        // Upload exercise data to events table
+        // Upload exercise data to events table using batch insert
         if (pihsHealthData.exercise.isNotEmpty()) {
             Log.d("HealthConnect", "HealthRepository: Uploading ${pihsHealthData.exercise.size} exercise records to events table (Postgrest)")
-            pihsHealthData.exercise.forEach { exerciseRecord ->
+
+            val exerciseEvents = pihsHealthData.exercise.map { exerciseRecord ->
                 // Calculate duration in minutes
                 val startInstant = Instant.parse(exerciseRecord.startTime)
                 val endInstant = Instant.parse(exerciseRecord.endTime)
@@ -444,7 +445,7 @@ class HealthRepository @Inject constructor(
                     // Add other relevant exercise properties if needed
                 }
 
-                val event = buildJsonObject {
+                buildJsonObject {
                     put("user_id", userId)
                     put("event_name", exerciseRecord.title.ifEmpty { exerciseRecord.exerciseType })
                     put("start_timestamp", exerciseRecord.startTime)
@@ -455,19 +456,21 @@ class HealthRepository @Inject constructor(
                     // Consider adding metric_source_id if your 'events' table schema supports it
                     // put("metric_source_id", metricSourceInfo.id)
                 }
-                try {
-                    postgrest["events"].insert(event)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading exercise event for user $userId, event: $event", e)
-                    // Continue with the next record
-                }
             }
-            Log.d("HealthConnect", "HealthRepository: Uploaded exercise records to events table (Postgrest)")
+
+            try {
+                postgrest["events"].insert(buildJsonArray { exerciseEvents.forEach { add(it) } })
+                Log.d("HealthConnect", "HealthRepository: Uploaded exercise records to events table (Postgrest)")
+            } catch (e: Exception) {
+                Log.e("HealthConnect", "HealthRepository: Error uploading exercise events for user $userId", e)
+                // Continue with nutrition data
+            }
         }
 
-        // Upload nutrition data to events table
-        pihsHealthData.nutrition.forEach { nutritionRecord ->
-            if (nutritionRecord.calories > 0 || nutritionRecord.protein > 0 || nutritionRecord.fat > 0 || nutritionRecord.carbs > 0) {
+        // Upload nutrition data to events table using batch insert
+        val nutritionEvents = pihsHealthData.nutrition
+            .filter { it.calories > 0 || it.protein > 0 || it.fat > 0 || it.carbs > 0 }
+            .map { nutritionRecord ->
                 val startInstant = Instant.parse(nutritionRecord.startTime)
                 val endInstant = Instant.parse(nutritionRecord.endTime)
                 val durationMinutes = (endInstant.epochSecond - startInstant.epochSecond) / 60
@@ -479,7 +482,7 @@ class HealthRepository @Inject constructor(
                     put("carbs", nutritionRecord.carbs)
                 }
 
-                val event = buildJsonObject {
+                buildJsonObject {
                     put("user_id", userId)
                     put("event_name", "Meal - ${nutritionRecord.name.ifEmpty { "Unspecified" }}")
                     put("start_timestamp", nutritionRecord.startTime)
@@ -490,14 +493,18 @@ class HealthRepository @Inject constructor(
                      // Consider adding metric_source_id if your 'events' table schema supports it
                     // put("metric_source_id", metricSourceInfo.id)
                 }
-                try {
-                    postgrest["events"].insert(event)
-                } catch (e: Exception) {
-                    Log.e("HealthConnect", "HealthRepository: Error uploading nutrition event for user $userId, event: $event", e)
-                }
             }
+
+        if (nutritionEvents.isNotEmpty()) {
+            try {
+                postgrest["events"].insert(buildJsonArray { nutritionEvents.forEach { add(it) } })
+                Log.d("HealthConnect", "HealthRepository: Uploaded ${nutritionEvents.size} nutrition records to events table (Postgrest)")
+            } catch (e: Exception) {
+                Log.e("HealthConnect", "HealthRepository: Error uploading nutrition events for user $userId", e)
+            }
+        } else {
+            Log.d("HealthConnect", "HealthRepository: No nutrition records to upload")
         }
-        Log.d("HealthConnect", "HealthRepository: Processed nutrition records for events table (Postgrest)")
 
         // Upload sleep events using DataUploaderService
         val eventsToUpload = transformPihsToEvents(pihsHealthData)

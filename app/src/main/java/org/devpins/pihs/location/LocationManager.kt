@@ -150,13 +150,17 @@ class LocationManager @Inject constructor(
 
     /**
      * Checks if location polling is currently active.
+     * Note: This is a synchronous operation that queries WorkManager.
+     * For UI usage, consider calling this from a coroutine or background thread.
      * @return true if the periodic work is enqueued or running, false otherwise
      */
-    fun isLocationTrackingActive(): Boolean {
+    suspend fun isLocationTrackingActive(): Boolean {
         return try {
-            val workInfos = workManager.getWorkInfosForUniqueWork(LocationPollingWorker.UNIQUE_WORK_NAME).get()
-            workInfos.any { 
-                it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING 
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val workInfos = workManager.getWorkInfosForUniqueWork(LocationPollingWorker.UNIQUE_WORK_NAME).get()
+                workInfos.any {
+                    it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error checking location tracking status", e)

@@ -100,62 +100,63 @@ class CsvImportViewModel @Inject constructor(
 
     private fun parseCsv(uri: Uri): List<DataPoint> {
         val dataPoints = mutableListOf<DataPoint>()
-        val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
 
-        requireNotNull(inputStream) { "Could not open input stream for URI: $uri" }
+        // Use try-with-resources pattern to ensure input stream is closed
+        context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            csvReader {
+                // Configuration, e.g., for handling potential errors
+                skipEmptyLine = true
+            }.open(inputStream) {
+                // Read the header row to map columns dynamically
+                val header = readNext()
+                if (header == null) {
+                    Log.w(TAG, "CSV header is missing.")
+                    return@open
+                }
 
-        csvReader {
-            // Configuration, e.g., for handling potential errors
-            skipEmptyLine = true
-        }.open(inputStream) {
-            // Read the header row to map columns dynamically
-            val header = readNext()
-            if (header == null) {
-                Log.w(TAG, "CSV header is missing.")
-                return@open
-            }
+                // Map header names to their index for quick lookup
+                val headerIndexMap = header.withIndex().associate { (index, name) -> name.trim() to index }
+                val timeIndex = headerIndexMap["time"] ?: return@open // 'time' column is mandatory
 
-            // Map header names to their index for quick lookup
-            val headerIndexMap = header.withIndex().associate { (index, name) -> name.trim() to index }
-            val timeIndex = headerIndexMap["time"] ?: return@open // 'time' column is mandatory
+                readAllAsSequence().forEach { row ->
+                    try {
+                        val timestampStr = row[timeIndex]
+                        // The example CSV uses a space separator, not 'T'
+                        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                        val localDateTime = LocalDateTime.parse(timestampStr, formatter)
+                        val timestamp = localDateTime.atOffset(ZoneOffset.UTC).format(DateTimeFormatter.ISO_INSTANT)
 
-            readAllAsSequence().forEach { row ->
-                try {
-                    val timestampStr = row[timeIndex]
-                    // The example CSV uses a space separator, not 'T'
-                    val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
-                    val localDateTime = LocalDateTime.parse(timestampStr, formatter)
-                    val timestamp = localDateTime.atOffset(ZoneOffset.UTC).format(DateTimeFormatter.ISO_INSTANT)
+                        // Iterate through our known metrics and see if they exist in the CSV header
+                        for ((columnIndex, columnName) in header.withIndex()) {
+                            val metricName = columnToMetricMap[columnName.trim()] ?: continue
+                            val valueStr = row.getOrNull(columnIndex)
 
-                    // Iterate through our known metrics and see if they exist in the CSV header
-                    for ((columnIndex, columnName) in header.withIndex()) {
-                        val metricName = columnToMetricMap[columnName.trim()] ?: continue
-                        val valueStr = row.getOrNull(columnIndex)
-
-                        if (!valueStr.isNullOrBlank()) {
-                            val valueNum = valueStr.toDoubleOrNull()
-                            if (valueNum != null) {
-                                dataPoints.add(
-                                    DataPoint(
-                                        metricSourceId = CSV_METRIC_SOURCE_ID,
-                                        timestamp = timestamp,
-                                        metricName = metricName,
-                                        valueNumeric = valueNum,
-                                        valueText = null,
-                                        valueJson = null,
-                                        unit = null,
-                                        tags = null,
-                                        valueGeography = null
+                            if (!valueStr.isNullOrBlank()) {
+                                val valueNum = valueStr.toDoubleOrNull()
+                                if (valueNum != null) {
+                                    dataPoints.add(
+                                        DataPoint(
+                                            metricSourceId = CSV_METRIC_SOURCE_ID,
+                                            timestamp = timestamp,
+                                            metricName = metricName,
+                                            valueNumeric = valueNum,
+                                            valueText = null,
+                                            valueJson = null,
+                                            unit = null,
+                                            tags = null,
+                                            valueGeography = null
+                                        )
                                     )
-                                )
+                                }
                             }
                         }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Skipping invalid row: $row. Error: ${e.message}")
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Skipping invalid row: $row. Error: ${e.message}")
                 }
             }
-        }
+        } ?: throw IllegalStateException("Could not open input stream for URI: $uri")
+
         Log.d(TAG, "Successfully parsed ${dataPoints.size} data points from CSV.")
         return dataPoints
     }

@@ -53,6 +53,12 @@ object UsageStatsHelper {
         // Add more as needed
     )
 
+    // Cache for app names to avoid repeated PackageManager queries
+    private val appNameCache = mutableMapOf<String, String>()
+
+    // Cache for system app status to avoid repeated PackageManager queries
+    private val systemAppCache = mutableMapOf<String, Boolean>()
+
     /**
      * Checks if the application has been granted permission to access usage statistics.
      *
@@ -131,12 +137,11 @@ object UsageStatsHelper {
             .withZoneSameInstant(ZoneId.of("UTC"))
             .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 
-        var totalDeviceUsageMillis = 0L
-        queryUsageStats.forEach {
-            if (!isSystemApp(context, it.packageName)) {
-                totalDeviceUsageMillis += it.totalTimeInForeground
-            }
-        }
+        // Calculate total device usage using optimized filtering
+        val totalDeviceUsageMillis = queryUsageStats
+            .filterNot { isSystemApp(context, it.packageName) }
+            .sumOf { it.totalTimeInForeground }
+
         if (totalDeviceUsageMillis > 0) {
             dataPoints.add(
                 PihsDataPoint(
@@ -152,9 +157,11 @@ object UsageStatsHelper {
         }
 
         val targetAppStats = queryUsageStats
+            .asSequence() // Use sequence for lazy evaluation
             .filter { TARGET_APP_PACKAGES.contains(it.packageName) && it.totalTimeInForeground > TEN_MINUTES_IN_MILLIS }
             .sortedByDescending { it.totalTimeInForeground }
             .take(5)
+            .toList()
 
         targetAppStats.forEach { usageStat ->
             val appName = getAppName(context, usageStat.packageName)
@@ -180,36 +187,40 @@ object UsageStatsHelper {
     }
 
     /**
-     * Retrieves the application name for a given package name.
+     * Retrieves the application name for a given package name with caching.
      * @param context The application context.
      * @param packageName The package name of the application.
      * @return The application name, or the package name if the app name cannot be found.
      */
     private fun getAppName(context: Context, packageName: String): String {
-        return try {
-            val packageManager = context.packageManager
-            val applicationInfo = packageManager.getApplicationInfo(packageName, 0)
-            packageManager.getApplicationLabel(applicationInfo).toString()
-        } catch (e: PackageManager.NameNotFoundException) {
-            packageName // Return package name as fallback
+        return appNameCache.getOrPut(packageName) {
+            try {
+                val packageManager = context.packageManager
+                val applicationInfo = packageManager.getApplicationInfo(packageName, 0)
+                packageManager.getApplicationLabel(applicationInfo).toString()
+            } catch (e: PackageManager.NameNotFoundException) {
+                packageName // Return package name as fallback
+            }
         }
     }
 
     /**
-     * Checks if an application is a system app.
+     * Checks if an application is a system app with caching.
      * @param context The application context.
      * @param packageName The package name of the application.
      * @return `true` if the app is a system app or an updated system app, `false` otherwise.
      * Returns `true` if [PackageManager.NameNotFoundException] occurs, assuming it might be a system component.
      */
     private fun isSystemApp(context: Context, packageName: String): Boolean {
-        return try {
-            val packageManager = context.packageManager
-            val applicationInfo = packageManager.getApplicationInfo(packageName, 0)
-            (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0 ||
-            (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-        } catch (e: PackageManager.NameNotFoundException) {
-            true // Treat as system app if not found, to be safe in filtering usage
+        return systemAppCache.getOrPut(packageName) {
+            try {
+                val packageManager = context.packageManager
+                val applicationInfo = packageManager.getApplicationInfo(packageName, 0)
+                (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            } catch (e: PackageManager.NameNotFoundException) {
+                true // Treat as system app if not found, to be safe in filtering usage
+            }
         }
     }
 
