@@ -538,18 +538,35 @@ private fun transformPihsToDataPoints(
     pihsHealthData: PIHSHealthData,
     metricSourceId: Long
 ): List<org.devpins.pihs.data.model.DataPoint> {
-    val dataPoints = mutableListOf<org.devpins.pihs.data.model.DataPoint>()
+    // Pre-allocate approximate capacity to reduce list resizing
+    // Each sleep record generates ~10 data points, exercise ~7, heart rate samples vary
+    val estimatedCapacity = pihsHealthData.steps.size +
+        pihsHealthData.weight.size +
+        pihsHealthData.heartRate.sumOf { it.samples.size } +
+        pihsHealthData.heartRateVariability.size +
+        pihsHealthData.restingHeartRate.size +
+        (pihsHealthData.bloodPressure.size * 2) + // 2 data points per reading
+        pihsHealthData.bloodGlucose.size +
+        pihsHealthData.bodyTemperature.size +
+        pihsHealthData.oxygenSaturation.size +
+        pihsHealthData.respiratoryRate.size +
+        pihsHealthData.hydration.size +
+        (pihsHealthData.sleep.size * 10) + // Approximate data points per sleep session
+        (pihsHealthData.exercise.size * 7) // Approximate data points per exercise
+
+    val dataPoints = ArrayList<org.devpins.pihs.data.model.DataPoint>(estimatedCapacity)
     // val currentTimestampForTags = org.devpins.pihs.data.model.DataPoint( // This was a placeholder, not actively used.
     // metricSourceId = null, timestamp = "", metricName = "", valueNumeric = null, valueText = null, valueJson = null, unit = null, tags = null
     // ).timestamp
 
-    // Steps
-    pihsHealthData.steps.forEach { stepData ->
-        if (stepData.count > 0) {
-            dataPoints.add(
+    // Steps - use optimized filtering and mapping
+    dataPoints.addAll(
+        pihsHealthData.steps
+            .filter { it.count > 0 }
+            .map { stepData ->
                 org.devpins.pihs.data.model.DataPoint(
                     metricSourceId = metricSourceId,
-                    timestamp = stepData.endTime, // Standard Health Connect practice: timestamp at end of interval
+                    timestamp = stepData.endTime,
                     metricName = "activity_steps",
                     valueNumeric = stepData.count.toDouble(),
                     valueText = null,
@@ -558,14 +575,14 @@ private fun transformPihsToDataPoints(
                     tags = null,
                     valueGeography = null
                 )
-            )
-        }
-    }
+            }
+    )
 
-    // Weight
-    pihsHealthData.weight.forEach { weightData ->
-        if (weightData.weight > 0) {
-            dataPoints.add(
+    // Weight - use optimized filtering and mapping
+    dataPoints.addAll(
+        pihsHealthData.weight
+            .filter { it.weight > 0 }
+            .map { weightData ->
                 org.devpins.pihs.data.model.DataPoint(
                     metricSourceId = metricSourceId,
                     timestamp = weightData.time,
@@ -577,15 +594,15 @@ private fun transformPihsToDataPoints(
                     tags = null,
                     valueGeography = null
                 )
-            )
-        }
-    }
+            }
+    )
 
-    // Heart Rate Samples
-    pihsHealthData.heartRate.forEach { hrData ->
-        hrData.samples.forEach { sample ->
-            if (sample.beatsPerMinute > 0) {
-                dataPoints.add(
+    // Heart Rate Samples - flatten nested structure and filter in one pass
+    dataPoints.addAll(
+        pihsHealthData.heartRate.flatMap { hrData ->
+            hrData.samples
+                .filter { it.beatsPerMinute > 0 }
+                .map { sample ->
                     org.devpins.pihs.data.model.DataPoint(
                         metricSourceId = metricSourceId,
                         timestamp = sample.time,
@@ -597,10 +614,9 @@ private fun transformPihsToDataPoints(
                         tags = null,
                         valueGeography = null
                     )
-                )
-            }
+                }
         }
-    }
+    )
 
     // Heart Rate Variability (RMSSD)
     pihsHealthData.heartRateVariability.forEach { hrvData ->
