@@ -68,7 +68,12 @@ class LocationPollingWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         Log.d(TAG, "LocationPollingWorker started - Attempt ${runAttemptCount + 1}")
-        
+
+        // Wait for Supabase Auth to initialize and restore session from storage
+        Log.d(TAG, "Waiting for auth initialization...")
+        auth.awaitInitialization()
+        Log.d(TAG, "Auth initialization complete")
+
         // Check if user is authenticated
         val currentUser = auth.currentUserOrNull()
         if (currentUser == null) {

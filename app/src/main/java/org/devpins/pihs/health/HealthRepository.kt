@@ -120,6 +120,11 @@ class HealthRepository @Inject constructor(
             _syncStatus.value = SyncStatus.Syncing
             syncCancelled = false
 
+            // Wait for Supabase Auth to initialize and restore session from storage
+            Log.d("HealthConnect", "HealthRepository: Waiting for auth initialization...")
+            auth.awaitInitialization()
+            Log.d("HealthConnect", "HealthRepository: Auth initialization complete")
+
             // Check if Health Connect is available and permissions are granted
             Log.d("HealthConnect", "HealthRepository: Health Connect availability: ${healthConnectAvailability.value}")
             Log.d("HealthConnect", "HealthRepository: Permissions granted: ${permissionsGranted.value}")
@@ -224,6 +229,11 @@ class HealthRepository @Inject constructor(
             Log.d("HealthConnect", "HealthRepository: Starting health data sync for range $startTime to $endTime")
             _syncStatus.value = SyncStatus.Syncing
             syncCancelled = false
+
+            // Wait for Supabase Auth to initialize and restore session from storage
+            Log.d("HealthConnect", "HealthRepository: Waiting for auth initialization...")
+            auth.awaitInitialization()
+            Log.d("HealthConnect", "HealthRepository: Auth initialization complete")
 
             // Check if Health Connect is available and permissions are granted
             Log.d("HealthConnect", "HealthRepository: Health Connect availability: ${healthConnectAvailability.value}")
