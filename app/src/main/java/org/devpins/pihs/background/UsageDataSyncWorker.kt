@@ -84,6 +84,11 @@ class UsageDataSyncWorker @AssistedInject constructor(
             return@withContext Result.failure()
         }
 
+        // Wait for Supabase Auth to initialize and restore session from storage
+        Log.d(TAG, "Waiting for auth initialization...")
+        supabaseClient.auth.awaitInitialization()
+        Log.d(TAG, "Auth initialization complete")
+
         val userId = supabaseClient.auth.currentUserOrNull()?.id
         if (userId == null) {
             Log.w(TAG, "User not logged in. Cannot sync usage data.")
