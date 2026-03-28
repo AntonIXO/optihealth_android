@@ -86,15 +86,18 @@ class SupplementRepository @Inject constructor(
      * Get all products in the user's cabinet.
      * Derives cabinet from distinct products the user has logged.
      * Includes joined data from compounds and vendors tables.
+     * Optimized: Filters archived products server-side and uses distinct to minimize data transfer.
      */
     suspend fun getUserProducts(userId: String): Result<List<Product>> {
         return try {
             // Query supplement_logs to find distinct products user has logged
+            // Note: Supabase Postgrest doesn't support SELECT DISTINCT on joined tables directly,
+            // so we still need client-side distinctBy, but we filter archived products server-side
             val logsWithProducts = postgrest["supplement_logs"]
                 .select(
                     columns = Columns.raw(
                         """
-                        products (
+                        products!inner (
                             id,
                             compound_id,
                             vendor_id,
@@ -114,16 +117,20 @@ class SupplementRepository @Inject constructor(
                 ) {
                     filter {
                         eq("user_id", userId)
+                        // Filter archived products on the server side
+                        eq("products.is_archived", false)
                     }
                 }
                 .decodeList<SupplementLogWithProduct>()
-            
-            // Extract distinct products (user's cabinet is derived from their log history)
-            val products = logsWithProducts
-                .mapNotNull { it.product }
-                .distinctBy { it.id }
-                .filter { it.isArchived != true } // Exclude archived products
-            
+
+            // Extract distinct products using a Set for O(1) lookups instead of distinctBy
+            val productSet = mutableSetOf<String>()
+            val products = logsWithProducts.mapNotNull { logWithProduct ->
+                logWithProduct.product?.let { product ->
+                    if (productSet.add(product.id)) product else null
+                }
+            }
+
             Log.d(TAG, "Fetched ${products.size} products for user cabinet")
             Result.success(products)
         } catch (e: Exception) {
@@ -135,18 +142,19 @@ class SupplementRepository @Inject constructor(
     /**
      * Get distinct products from user's cabinet for the quick-log widget.
      * Returns products the user has logged recently (last 90 days).
+     * Optimized: Filters archived products server-side and uses Set for efficient deduplication.
      */
     suspend fun getCabinetProducts(userId: String): Result<List<Product>> {
         return try {
             // Get products logged in the last 90 days for quick access
             val cutoffDate = Instant.now().minus(90, java.time.temporal.ChronoUnit.DAYS)
             val cutoffDateStr = cutoffDate.toString()
-            
+
             val logsWithProducts = postgrest["supplement_logs"]
                 .select(
                     columns = Columns.raw(
                         """
-                        products (
+                        products!inner (
                             id,
                             compound_id,
                             vendor_id,
@@ -164,15 +172,20 @@ class SupplementRepository @Inject constructor(
                     filter {
                         eq("user_id", userId)
                         gte("timestamp", cutoffDateStr)
+                        // Filter archived products on the server side
+                        eq("products.is_archived", false)
                     }
                 }
                 .decodeList<SupplementLogWithProduct>()
-            
-            val products = logsWithProducts
-                .mapNotNull { it.product }
-                .distinctBy { it.id }
-                .filter { it.isArchived != true }
-            
+
+            // Extract distinct products using a Set for O(1) lookups
+            val productSet = mutableSetOf<String>()
+            val products = logsWithProducts.mapNotNull { logWithProduct ->
+                logWithProduct.product?.let { product ->
+                    if (productSet.add(product.id)) product else null
+                }
+            }
+
             Log.d(TAG, "Fetched ${products.size} cabinet products")
             Result.success(products)
         } catch (e: Exception) {
